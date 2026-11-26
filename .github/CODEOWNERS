@@ -1,0 +1,23 @@
+# Require repository owner review for all changes, especially security-sensitive paths.
+* @wangbingnan136
+
+# Security-critical surfaces (explicitly highlighted for future collaborators)
+/.github/ @wangbingnan136
+/SECURITY.md @wangbingnan136
+/package.json @wangbingnan136
+/package-lock.json @wangbingnan136
+/install.sh @wangbingnan136
+/install.ps1 @wangbingnan136
+/uninstall.sh @wangbingnan136
+/uninstall.ps1 @wangbingnan136
+/scripts/ @wangbingnan136
+/rules/ @wangbingnan136
+/skills/ @wangbingnan136
+/lib/credential-vault.mjs @wangbingnan136
+/lib/package.mjs @wangbingnan136
+/lib/update-manager.mjs @wangbingnan136
+/lib/updates.mjs @wangbingnan136
+/lib/ssh-config.mjs @wangbingnan136
+/lib/ssh-remote.mjs @wangbingnan136
+/lib/proxy.mjs @wangbingnan136
+/lib/omni-gateway.mjs @wangbingnan136

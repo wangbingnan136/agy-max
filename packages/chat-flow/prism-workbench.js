@@ -1291,7 +1291,12 @@
       panel.addEventListener?.('click', handleFiberRowClick, capOpts);
     }
 
+    // A throw mid-sync must not leave the native-menu-hiding attribute on (it would hide the model menu with no slider).
     function syncEffortSlider() {
+      try { syncEffortSliderBody(); } catch { setEffortSliderReadyAttr(false); }
+    }
+
+    function syncEffortSliderBody() {
       const opts = getOpts();
       if (!opts.enabled || (!opts.effortSlider && !opts.effortMemory)) {
         for (const bar of document.querySelectorAll?.('[data-agy-effort-slider="1"], [data-agy-effort-sep="1"]') || []) bar.remove?.();

@@ -1,6 +1,6 @@
 {
   "id": "i18n",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "coreRange": ">=1.4.0",
   "defaultInstalled": true,
   "displayName": { "zh-CN": "多语言与市场汉化", "en": "Localization & Marketplace i18n" },

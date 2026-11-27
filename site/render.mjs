@@ -7,6 +7,7 @@ import {
   SCREENSHOT_ASSETS,
   SITE_CONTENT
 } from './content.mjs';
+import { MODULE_CATALOG } from '../packages/core/catalog.mjs';
 
 const esc = value =>
   String(value)
@@ -262,6 +263,31 @@ export function renderPage({ locale, version, assetPrefix }) {
       </article>`
     )
     .join('');
+
+  // Module names and descriptions come from the plugin's own catalog so the site never drifts from the Modules tab.
+  const catalogLang = isZh ? 'zh-CN' : 'en';
+  const moduleGroupHtml = (defaultInstalled, title, badge) => `
+      <div class="modules-group">
+        <h3 class="modules-group-title">${esc(title)}</h3>
+        <div class="modules-grid">
+          ${MODULE_CATALOG.filter(m => m.defaultInstalled === defaultInstalled)
+            .map(
+              m => `
+          <article class="pillar-card module-card">
+            <div class="module-top">
+              <h4>${esc(m.displayName[catalogLang])}</h4>
+              <span class="${defaultInstalled ? 'badge-soft' : 'chip chip-accent'}">${esc(badge)}</span>
+            </div>
+            <p>${esc(m.description[catalogLang])}</p>
+          </article>`
+            )
+            .join('')}
+        </div>
+      </div>`;
+  const modulesHtml =
+    moduleGroupHtml(true, c.modules.defaultTitle, c.modules.defaultBadge) +
+    moduleGroupHtml(false, c.modules.optionalTitle, c.modules.optionalBadge);
+  const modulePointsHtml = c.modules.points.map(point => `<li class="chip">${esc(point)}</li>`).join('');
 
   const pillarsHtml = c.credits.pillars
     .map(
@@ -622,6 +648,17 @@ export function renderPage({ locale, version, assetPrefix }) {
         <div class="bento-grid">
           ${bentoHtml}
         </div>
+      </div>
+    </section>
+
+    <section class="section" id="modules">
+      <div class="container">
+        <div class="section-head">
+          <h2>${esc(c.modules.heading)}</h2>
+          <p>${esc(c.modules.subheading)}</p>
+        </div>
+        ${modulesHtml}
+        <ul class="module-points">${modulePointsHtml}</ul>
       </div>
     </section>
 

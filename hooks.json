@@ -4,14 +4,14 @@
     "PreInvocation": [
       {
         "type": "command",
-        "command": "node -e \"var f=require('fs'),p=require('path'),o=require('os'),u=require('url'),e=process.env,h='',hit=0;try{h=o.homedir()}catch(x){}for(var d of[e.PLUGIN_ROOT,e.AGY_PLUGIN_ROOT,h?p.join(h,'.gemini','config','plugins','agy-max'):'','.']){if(d){var s=p.resolve(d,'scripts','telemetry-hook.mjs');if(f.existsSync(s))if(f.existsSync(p.resolve(d,'plugin.json'))){hit=1;process.argv.splice(1,0,s);import(u.pathToFileURL(s).href).catch(function(){process.stdout.write('{}')});break;}}}if(hit===0)process.stdout.write('{}')\" PreInvocation",
+        "command": "node -e \"var f=require('fs'),p=require('path'),o=require('os'),u=require('url'),e=process.env,h='',hit=0;try{h=o.homedir()}catch(x){}for(var d of[e.PLUGIN_ROOT,e.AGY_PLUGIN_ROOT,h?p.join(h,'.gemini','config','plugins','agy-max'):'']){if(d){var s=p.resolve(d,'scripts','telemetry-hook.mjs');if(f.existsSync(s))if(f.existsSync(p.resolve(d,'plugin.json'))){hit=1;process.argv.splice(1,0,s);import(u.pathToFileURL(s).href).catch(function(){process.stdout.write('{}')});break;}}}if(hit===0)process.stdout.write('{}')\" PreInvocation",
         "timeout": 5
       }
     ],
     "PostInvocation": [
       {
         "type": "command",
-        "command": "node -e \"var f=require('fs'),p=require('path'),o=require('os'),u=require('url'),e=process.env,h='',hit=0;try{h=o.homedir()}catch(x){}for(var d of[e.PLUGIN_ROOT,e.AGY_PLUGIN_ROOT,h?p.join(h,'.gemini','config','plugins','agy-max'):'','.']){if(d){var s=p.resolve(d,'scripts','telemetry-hook.mjs');if(f.existsSync(s))if(f.existsSync(p.resolve(d,'plugin.json'))){hit=1;process.argv.splice(1,0,s);import(u.pathToFileURL(s).href).catch(function(){process.stdout.write('{}')});break;}}}if(hit===0)process.stdout.write('{}')\" PostInvocation",
+        "command": "node -e \"var f=require('fs'),p=require('path'),o=require('os'),u=require('url'),e=process.env,h='',hit=0;try{h=o.homedir()}catch(x){}for(var d of[e.PLUGIN_ROOT,e.AGY_PLUGIN_ROOT,h?p.join(h,'.gemini','config','plugins','agy-max'):'']){if(d){var s=p.resolve(d,'scripts','telemetry-hook.mjs');if(f.existsSync(s))if(f.existsSync(p.resolve(d,'plugin.json'))){hit=1;process.argv.splice(1,0,s);import(u.pathToFileURL(s).href).catch(function(){process.stdout.write('{}')});break;}}}if(hit===0)process.stdout.write('{}')\" PostInvocation",
         "timeout": 5
       }
     ]
@@ -21,7 +21,7 @@
     "SessionStart": [
       {
         "type": "command",
-        "command": "node -e \"var f=require('fs'),p=require('path'),o=require('os'),u=require('url'),e=process.env,h='',hit=0;try{h=o.homedir()}catch(x){}for(var d of[e.PLUGIN_ROOT,e.AGY_PLUGIN_ROOT,h?p.join(h,'.gemini','config','plugins','agy-max'):'','.']){if(d){var s=p.resolve(d,'scripts','ssh-boundary-hook.mjs');if(f.existsSync(s)&&f.existsSync(p.resolve(d,'plugin.json'))){hit=1;process.argv.splice(1,0,s);import(u.pathToFileURL(s).href).catch(function(){process.stdout.write('{}')});break;}}}if(hit===0)process.stdout.write('{}')\" SessionStart",
+        "command": "node -e \"var f=require('fs'),p=require('path'),o=require('os'),u=require('url'),e=process.env,h='',hit=0;try{h=o.homedir()}catch(x){}for(var d of[e.PLUGIN_ROOT,e.AGY_PLUGIN_ROOT,h?p.join(h,'.gemini','config','plugins','agy-max'):'']){if(d){var s=p.resolve(d,'scripts','ssh-boundary-hook.mjs');if(f.existsSync(s)&&f.existsSync(p.resolve(d,'plugin.json'))){hit=1;process.argv.splice(1,0,s);import(u.pathToFileURL(s).href).catch(function(){process.stdout.write('{}')});break;}}}if(hit===0)process.stdout.write('{}')\" SessionStart",
         "timeout": 5
       }
     ],
@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node -e \"var f=require('fs'),p=require('path'),o=require('os'),u=require('url'),e=process.env,h='',hit=0;try{h=o.homedir()}catch(x){}for(var d of[e.PLUGIN_ROOT,e.AGY_PLUGIN_ROOT,h?p.join(h,'.gemini','config','plugins','agy-max'):'','.']){if(d){var s=p.resolve(d,'scripts','ssh-boundary-hook.mjs');if(f.existsSync(s)&&f.existsSync(p.resolve(d,'plugin.json'))){hit=1;process.argv.splice(1,0,s);import(u.pathToFileURL(s).href).catch(function(){process.stdout.write('{\\\"decision\\\":\\\"ask\\\",\\\"reason\\\":\\\"agy-max SSH boundary hook failed to load\\\"}')});break;}}}if(hit===0)process.stdout.write('{\\\"decision\\\":\\\"allow\\\"}')\" PreToolUse",
+            "command": "node -e \"var f=require('fs'),p=require('path'),o=require('os'),u=require('url'),e=process.env,h='',hit=0;try{h=o.homedir()}catch(x){}for(var d of[e.PLUGIN_ROOT,e.AGY_PLUGIN_ROOT,h?p.join(h,'.gemini','config','plugins','agy-max'):'']){if(d){var s=p.resolve(d,'scripts','ssh-boundary-hook.mjs');if(f.existsSync(s)&&f.existsSync(p.resolve(d,'plugin.json'))){hit=1;process.argv.splice(1,0,s);import(u.pathToFileURL(s).href).catch(function(){process.stdout.write('{\\\"decision\\\":\\\"ask\\\",\\\"reason\\\":\\\"agy-max SSH boundary hook failed to load\\\"}')});break;}}}if(hit===0){var c=process.cwd(),m=0;for(var i=0;i<64;i++){if(f.existsSync(p.join(c,'.agy-ssh-project.json'))){m=1;break}var q=p.dirname(c);if(q===c)break;c=q}process.stdout.write(m?'{\\\"decision\\\":\\\"ask\\\",\\\"reason\\\":\\\"agy-max SSH boundary hook script missing\\\"}':'{\\\"decision\\\":\\\"allow\\\"}')}\" PreToolUse",
             "timeout": 5
           }
         ]

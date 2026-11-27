@@ -2,7 +2,7 @@
   <img src="assets/logo.svg" width="72" height="72" alt="Antigravity Max Logo" />
   <h1>Antigravity Max (<code>agy-max</code>)</h1>
   <p><strong>All-in-one flagship native workbench for Antigravity 2.0 — fully adapted for the latest Antigravity (2.35.1+)</strong></p>
-  <p>Built-in <code>agy-fast</code> accelerator (toggleable anytime) / Native Side Panel File Tree / Codex-style workflow suite / Prism optics &amp; workbench / Multilingual UI / Context &amp; usage dashboard / Multi-account switcher / No-TUN proxy / SSH &amp; WSL2</p>
+  <p>Modular (1 core + 8 modules, install only what you use) / Built-in <code>agy-fast</code> accelerator (toggleable anytime) / Native Side Panel File Tree / Codex-style workflow suite / Drag conversations between projects &amp; nested /btw side chats / Multilingual UI / Context &amp; usage dashboard / Optional: Prism optics, multi-account switcher, no-TUN proxy, single-window SSH projects</p>
   <!-- plugin-badges:start -->
   <p>
     <a href="https://github.com/wangbingnan136/agy-max/releases"><img src="https://img.shields.io/github/v/release/wangbingnan136/agy-max?label=Release&color=4f46e5" height="20" alt="Release" /></a>
@@ -82,7 +82,7 @@ On top of these foundations, `Antigravity Max` adds an **under-card Git &amp; te
   </tr>
   <tr>
     <th>Requests &amp; Cache Anomalies</th>
-    <th>Multi-Account &amp; Quota Manager (Off by default)</th>
+    <th>Multi-Account &amp; Quota Manager (Optional module)</th>
   </tr>
   <tr>
     <td>
@@ -91,21 +91,21 @@ On top of these foundations, `Antigravity Max` adds an **under-card Git &amp; te
     </td>
     <td>
       <img src="docs/images/card-accounts.png" alt="Multi-account switching and quota management" width="100%" />
-      <p>Store and switch multiple Google accounts locally via OS native keyrings, with 5-hour and weekly quota views in one place.</p>
+      <p>With the Multi-Account Switcher module installed, store and switch multiple Google accounts locally via OS native keyrings, with 5-hour and weekly quota views in one place.</p>
     </td>
   </tr>
   <tr>
     <th>Multilingual &amp; Optics Settings</th>
-    <th>No-TUN Proxy (Off by default)</th>
+    <th>No-TUN Proxy (Optional module)</th>
   </tr>
   <tr>
     <td>
       <img src="docs/images/card-settings.png" alt="Language and display settings" width="100%" />
-      <p>Switch display languages, scene presets, optical palettes, compact layout, and user bubble tints live without restarting.</p>
+      <p>Switch display languages live and filter settings by category; with the Interface &amp; Optics module installed, add scene presets, optical palettes, and user bubble tints.</p>
     </td>
     <td>
       <img src="docs/images/card-proxy.png" alt="No-TUN application proxy settings" width="100%" />
-      <p>Route only Antigravity through HTTP or SOCKS5 with built-in connectivity checks, Force HTTP/1.1, and verified in-app updates.</p>
+      <p>With the Standalone Proxy module installed, route only Antigravity through HTTP or SOCKS5 with built-in connectivity checks and Force HTTP/1.1.</p>
     </td>
   </tr>
 </table>
@@ -114,16 +114,29 @@ On top of these foundations, `Antigravity Max` adds an **under-card Git &amp; te
 
 ## Features
 
-- **Fully adapted for the latest Antigravity (`2.35.1+`)**: Seamlessly aligned with the newest client sidebar pinning internals, router transition lifecycle, and native `sidePanelV2` architecture with zero cold-start white-screen issues.
+Four everyday modules are installed by default and work out of the box; the other four optional modules can be installed or removed anytime from **Antigravity Max -> Modules**. Modules you skip are never loaded, use no memory, and add no settings.
+
+### Core
+
+- **Modular (1 core + 8 modules)**: All modules share one lightweight core and a single debugging connection. Installs download from the GitHub release with SHA-256 verification and fall back to the offline copy bundled in the package; uninstalling either keeps a module's settings (restored when you reinstall) or purges them, and purging also deletes that module's saved account credentials and SSH passwords from the OS keychain. Upgrading from v1.4.x keeps the optional modules you were using. Developers can drop a standalone package into `~/.gemini/config/plugins/agy-<module>` to mount it first in Dev-Local mode.
+- **Fully adapted for the latest Antigravity (`2.35.1+`)**: Seamlessly aligned with the newest client sidebar pinning internals, router transition lifecycle, and native `sidePanelV2` architecture with zero cold-start white-screen issues; includes Windows + WSL2 (NAT / Mirrored) compatibility support.
 - **Built-in `agy-fast` accelerator (on by default, toggleable anytime)**: Automatically deploys and enables bundled `agy-fast` (batched search, symbol outlines, atomic multi-file edits, concurrent checks, and startup snapshots) with zero extra setup; turn it off anytime in `Settings -> Conversation enhancements -> Built-in agy-fast accelerator` while preserving any custom `*.local.md` rules.
-- **Codex-style flagship workflow suite**: Millisecond full-text search across local and SSH transcripts (`Cmd+Opt+F` / `Ctrl+Alt+F` jumping straight to matched turns with one-click code/command copy), an active-sessions bell next to the titlebar conversation picker with a persisted sidebar `Priority` running/unread list, one-click archived chats manager, a non-locking composer Git status &amp; read-only Unified Diff pill (`+X / -Y`), a persistent `/goal` bar with a live Goal editor drawer, plus pragmatic coding mode and `/code-review`.
-- **Prism optics and modern workbench**: Four light/dark optical palettes, one-click scene presets (`Native` / `Ultra` / `Focus` / `Eco`), liquid vial context indicator, reasoning effort slider with per-model memory, long code-block folding, inline step Git diffs, hover turn outline, chat folders, pixel mascots, and sanitized JSON config backup/restore.
-- **Context, speed, and local usage dashboard**: Live context ring (cache reuse, compaction count, Orchestrator per-model bars) and speed dial (`tok/s`, TTFT, model/tool time, estimated session cost) below the composer, paired with the **Antigravity Max** sidebar dashboard (53-week heatmap, per-request log, cache anomaly alerts, and official pricing refresh).
-- **Session branching, inline editing, and full Markdown export**: Fork full-history sessions (including subagent chats), revise sent messages in place, or copy full transcripts (or up to any turn) as complete Markdown including tool call arguments, tool outputs, and restored truncated responses across local and SSH sessions.
-- **Multilingual UI**: Localizes panels, common menus, permission dialogs, model descriptions, settings, and Swarm iframes while leaving chat messages and code blocks untouched.
-- **Multi-account switching and no-TUN proxy (off by default)**: OS keyring isolation across Windows, macOS, Linux, and WSL2 with ownership checks and optional auto-switch on depletion; per-app HTTP/SOCKS5 proxy injection with connectivity testing and `GODEBUG=http2client=0`.
-- **Paste SSH commands, remote sync, and WSL2 support**: Paste `ssh -p 2222 user@host` into Create New Project -> SSH Host to auto-fill `user@host:2222` (safely discarding appended passwords); read remote SSH telemetry over local OpenSSH with zero server installation; includes Windows + WSL2 (NAT / Mirrored) compatibility support.
-- **Native Side Panel File Tree and external editor jump**: Integrates a **File Tree** entry and persistent tab right inside Antigravity's native right Side Panel (filter project files, preview code / images / `.ipynb` notebooks, edit text files in place and save with `Cmd+S`, or pick and mount recent folders when no workspace is linked); right-click file links or File Tree rows to attach to chat, jump to exact `line:col` anchors in `Cursor` / `VS Code` / `Windsurf` / `Zed` / `Kiro` (falling back to the system text editor when none is installed), reveal in folder, or copy paths (including Windows LAN NAS / SMB shares).
+- **One-click in-app updates**: Check for updates, read the release notes, and auto-update from `Settings -> Updates`; packages are SHA-256 verified and roll back automatically if startup fails.
+
+### Default modules
+
+- **Telemetry & Quota: context, speed, and local usage dashboard**: Live context ring (cache reuse, compaction count, Orchestrator per-model bars) and speed dial (decode-phase `tok/s`, TTFT, model/tool time, estimated session cost) below the composer; open the full dashboard from the right Side Panel under **Plugins -> Antigravity Max** for a 53-week heatmap, per-request log, cache anomaly alerts, error copy, and quota estimates.
+- **Chat Flow: branch, edit, move, and nest**: Fork full-history sessions (including subagent chats), revise sent messages in place, drag a conversation onto another sidebar project (or out of one), keep `/btw` side questions folded under their main conversation or detach them, and copy full transcripts (or up to any turn) as complete Markdown including tool arguments, outputs, and restored truncated responses across local and SSH sessions; plus the persistent `/goal` bar and editor drawer, `[Image #N]` inline image chips, reasoning effort slider with per-model memory, long code-block folding, inline step Git diffs, hover turn outline, chat folders (Beta), pragmatic coding mode, and `/code-review`.
+- **Workspace & Navigation: Codex-style workflow suite**: Millisecond full-text search across local and SSH transcripts (`Cmd+Opt+F` / `Ctrl+Alt+F` jumping straight to matched turns with one-click code/command copy), an active-sessions bell next to the titlebar conversation picker with a persisted sidebar `Priority` running/unread list, one-click archived chats manager, project pinning, and a non-locking composer Git status &amp; read-only Unified Diff pill (`+X / -Y`).
+- **Workspace & Navigation: native Side Panel File Tree and external editor jump**: Integrates a **File Tree** entry and persistent tab right inside Antigravity's native right Side Panel (filter project files, preview code / images / `.ipynb` notebooks, edit text files in place and save with `Cmd+S`, or pick and mount recent folders when no workspace is linked); right-click file links or File Tree rows to attach to chat, jump to exact `line:col` anchors in `Cursor` / `VS Code` / `Windsurf` / `Zed` / `Kiro` (falling back to the system text editor when none is installed), reveal in folder, or copy paths (including Windows LAN NAS / SMB shares).
+- **Localization & Marketplace i18n**: Localizes panels, common menus, permission dialogs, model descriptions, settings, and Swarm iframes in five languages, and translates English marketplace descriptions with a local cache, while leaving chat messages and code blocks untouched.
+
+### Optional modules (not installed by default)
+
+- **Interface & Optics: Prism optics**: Four light/dark optical palettes, one-click scene presets (`Native` / `Ultra` / `Focus` / `Eco`), accent and corner styles, code fonts, liquid vial context indicator, stream ink and conversation aura, smooth caret, pixel mascots, and user bubble tints (see [docs/PRISM_COMPATIBILITY.md](docs/PRISM_COMPATIBILITY.md)).
+- **Multi-Account Switcher**: OS keyring isolation of multiple Google accounts across Windows, macOS, Linux, and WSL2, with a sidebar quick switcher, ownership checks, and optional auto-switch on depletion.
+- **Standalone Proxy (No-TUN)**: Per-app HTTP/SOCKS5 proxy injection without a global TUN, with connectivity testing and optional `GODEBUG=http2client=0` to ease idle disconnects.
+- **SSH Projects: single-window remote projects**: Add an SSH server under Create Project -> Remote -> `+ Add Resource`; remote projects sit next to local ones in the same window and the local AI works on the server directly (read/edit/search, remote terminal, detached long-running jobs, remote File Tree and Git diffs, cross-machine transfers). Paste `ssh -p 2222 user@host` to auto-fill `user@host:2222` (appended passwords are discarded), and a remote execution boundary hook keeps the AI from running commands on your local machine by mistake.
 
 ---
 
@@ -155,18 +168,20 @@ sh ./install.sh
 powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-Restart Antigravity once you finish your current task; **Antigravity Max** will appear in the left sidebar. On macOS, `~/Applications/Antigravity (Max).app` is generated with the native icon so you can drag it into your Dock.
+Restart Antigravity once you finish your current task, open the right Side Panel, and pick **Antigravity Max** under **Plugins**. A fresh install starts with the 4 everyday modules; install Interface & Optics, Multi-Account, Proxy, and SSH Projects from the **Modules** tab when you need them. On macOS, `~/Applications/Antigravity (Max).app` is generated with the native icon so you can drag it into your Dock.
 
 ### Updates and uninstall
 
 - **In-app updates**: Go to **Antigravity Max -> Settings -> Updates** and click **Check for updates** or **Auto update**. Packages are SHA-256 verified and roll back automatically if startup fails.
+- **Upgrading from v1.4.1 or earlier**: The package layout changed in v1.4.2, so older in-app updaters show "Go to download page". Reinstall once as described above (settings, accounts, and SSH projects are kept, and optional modules you used are reinstalled automatically); in-app updates work again afterwards.
+- **Installing or removing modules**: Open **Antigravity Max -> Modules** and install or uninstall a module. Uninstalling keeps its settings by default; ticking "Also delete" removes the module's local settings and its credentials in the OS keychain, which cannot be undone.
 - **Uninstall**: Run `sh ./uninstall.sh` (macOS / Linux / WSL2) or `powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1` (Windows). Append `--keep-settings` to keep your preferences.
 
 ---
 
 ## Configuration
 
-Every setting applies live in **Antigravity Max -> Settings** and saves automatically, including category filters, scene presets, the **Built-in `agy-fast` accelerator** switch, sanitized JSON export/import, and **Restore defaults**.
+Every setting applies live in **Antigravity Max -> Settings** and saves automatically, including category filters, scene presets, the **Built-in `agy-fast` accelerator** switch, sanitized JSON export/import, and **Restore defaults**. Settings only show options for installed modules; if a feature is missing, install its module from the **Modules** tab first.
 
 <details>
 <summary><strong>Expand environment variables and paths</strong></summary>
@@ -178,12 +193,26 @@ Every setting applies live in **Antigravity Max -> Settings** and saves automati
 | `~/.gemini/config/plugins/agy-max/` | Installed workbench plugin files and bundled assets |
 | `~/.gemini/config/plugins/agy-fast/` | Managed `agy-fast` accelerator plugin directory (removed automatically when toggled off) |
 | `~/.gemini/antigravity/plugin_data/agy-max/` | Saved settings, goals, account metadata, quota samples, and pricing cache |
+| `~/.gemini/antigravity/plugin_data/agy-max/modules/` | Installed module files; the install list is the sibling `modules-manifest.json` |
+| `~/.gemini/antigravity/plugin_data/agy-max/module_data/` | Settings snapshots kept when a module is uninstalled, restored on reinstall |
+| `~/.gemini/config/plugins/agy-<module>/` | Dev-Local mode: a standalone module package here mounts ahead of the installed copy |
 
 </details>
 
 ---
 
 ## Changelog
+
+### v1.4.2
+- **Modular by design (1 core + 8 modules)**: Features are split into 8 hot-pluggable modules. Four ship by default (Telemetry & Quota, Chat Flow, Workspace & Navigation, Localization); Interface & Optics, Multi-Account Switcher, Standalone Proxy and SSH Projects are now installed on demand from **Antigravity Max -> Modules**. Downloads are SHA-256 verified and fall back to a bundled offline copy; uninstalling can keep or fully delete a module's settings and credentials (including saved accounts and SSH passwords in the OS keychain). Upgrading from v1.4.x keeps the optional modules you were using.
+- **Drag conversations between projects and nested /btw side chats**: Drag a conversation onto another project (or out of one); /btw side questions sit under their main conversation, can be folded, and can be detached into a main conversation.
+- **Cleaner effort popover**: The native model list no longer flashes when opening the model menu or sliding the effort level.
+- **The "All" settings tab is now "Updates"**: Check for updates, auto-update in one click, and read the release notes there.
+- **More accurate, steadier stats**: Speed now counts decode-phase tok/s only; a locked database or a failed scan no longer zeroes or rolls back usage; the full dashboard moved to the right-sidebar Plugins page; pasting inline images no longer hangs.
+- **Sturdier, safer SSH**: Output printed by remote login scripts no longer leaks into file reads and command results; the remote execution boundary blocks the call when the hook fails, the project marker is corrupt, or the working directory is unknown; hooks never run a same-named script from the current directory; new end-to-end tests run against a real sshd.
+- **Large secrets saved in full to the macOS Keychain**: Account credentials over about 2 KB used to be truncated and are now stored completely.
+- **Translations and upstream sync**: Translated new Antigravity 2.35.x UI strings; bundled `agy-fast` bumped to `v0.3.2`.
+- **Upgrading from v1.4.1 or earlier needs one manual reinstall**: The package layout changed, so older in-app updaters show "Go to download page". Reinstall once with the install command above or the ZIP from the release (settings, accounts and SSH projects are kept); in-app updates work again from then on. Fully quit Antigravity (`⌘Q` on macOS) and reopen it after upgrading.
 
 ### v1.4.1
 - **More reliable SSH connections**: When the SSH handshake is dropped (`kex_exchange_identification`, `Connection closed/reset by ... port N`), the remote command is retried once. The command had not started yet, so it can never run twice. A handshake that keeps failing is now reported as a transient network or gateway problem instead of a wrong key, and authentication failures are not retried.

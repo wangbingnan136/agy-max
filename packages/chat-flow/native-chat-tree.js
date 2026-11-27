@@ -451,6 +451,7 @@
       const prev = env.adapter?.conversationProjectId?.(conversationId) || OUTSIDE;
       if (prev === normalized && projectOverrides[conversationId] === normalized) return true;
 
+      const prevOverrides = projectOverrides;
       projectOverrides = { ...projectOverrides, [conversationId]: normalized };
       try {
         env.adapter?.applySingleProjectMove?.(conversationId, normalized);
@@ -484,6 +485,8 @@
         });
         return true;
       } catch (err) {
+        projectOverrides = prevOverrides;
+        try { env.adapter?.applySingleProjectMove?.(conversationId, prev); } catch {}
         env.notify?.({
           title: ui('移动会话失败', 'Failed to move conversation'),
           message: err?.message || '',
@@ -884,7 +887,7 @@
     // Project reassignment uses direct sidebar drag-and-drop only — no right-click Move submenu.
     function extendConversationMenu(id, menuOptions, items) {
       if (!id || !Array.isArray(items) || menuOptions?.isArchived) return items;
-      let result = items.filter(it => it?.id !== 'move-to-project');
+      let result = enabledMove ? items.filter(it => it?.id !== 'move-to-project') : items;
 
       if (enabledBtw) {
         const snap = env.adapter?.btwTreeSnapshot?.() || {};

@@ -146,10 +146,10 @@ test('online SHA-256 verified module download, offline seed fallback, and data-p
   }
 });
 
-test('Scheme C dev-local directory takes priority while optional modules stay off by default even with legacy files', async () => {
+test('Scheme C dev-local directory takes priority and v1.4.x upgrade keeps the optional modules in use', async () => {
   const s = makeSandbox();
   try {
-    // Even if legacy settings/accounts exist on disk, optional modules must stay disabled until explicitly installed
+    // Simulate a v1.4.x user who had proxy, multi-account and SSH projects before upgrading
     writeFileSync(join(s.dataDir, 'settings.json'), JSON.stringify({
       enabled: true,
       proxyEnabled: true,
@@ -160,6 +160,9 @@ test('Scheme C dev-local directory takes priority while optional modules stay of
       activeId: 'acc-1',
       accounts: [{ id: 'acc-1', email: 'user@example.com' }]
     }));
+    // ssh-projects stores hosts as an id-keyed object, not an array
+    mkdirSync(join(s.dataDir, 'ssh-projects'), { recursive: true });
+    writeFileSync(join(s.dataDir, 'ssh-projects', 'hosts.json'), JSON.stringify({ format: 1, hosts: { 'host-1': { id: 'host-1' } } }));
 
     // Place a standalone Dev-Local plugin at ~/.gemini/config/plugins/agy-optics
     const devOpticsDir = join(s.home, '.gemini', 'config', 'plugins', 'agy-optics');
@@ -179,10 +182,12 @@ test('Scheme C dev-local directory takes priority while optional modules stay of
 
     const list = registry.listModules();
     const byId = new Map(list.map(m => [m.id, m]));
-    assert.equal(byId.get('proxy').active, false);
-    assert.equal(byId.get('accounts').active, false);
+    assert.equal(byId.get('proxy').active, true);
+    assert.equal(byId.get('accounts').active, true);
     assert.equal(byId.get('accounts').hasSavedData, true);
-    assert.equal(byId.get('ssh-remote').active, false);
+    assert.equal(byId.get('ssh-remote').active, true);
+    assert.equal(byId.get('ssh-remote').hasSavedData, true);
+    assert.equal(registry.isActive('telemetry'), true);
     assert.equal(byId.get('optics').active, true);
     assert.equal(byId.get('optics').source, 'dev-local');
     assert.equal(byId.get('optics').localPath, devOpticsDir);
@@ -416,6 +421,66 @@ test('syncIntegrations: true initializes without recursion and toggles SSH MCP +
     const hooksAfterUninstall = JSON.parse(readFileSync(join(installedDir, 'hooks.json'), 'utf8'));
     assert.deepEqual(mcpAfterUninstall, { mcpServers: {} });
     assert.equal(hooksAfterUninstall['agy-max-ssh-boundary'].enabled, false);
+  } finally {
+    s.clean();
+  }
+});
+
+test('concurrent installs keep both modules, online modules refresh on core upgrade, purge clears keychain secrets, saved SSH data keeps the boundary on', async () => {
+  const s = makeSandbox();
+  try {
+    const installedDir = join(s.home, '.gemini', 'config', 'plugins', 'agy-max');
+    mkdirSync(installedDir, { recursive: true });
+    writeFileSync(join(installedDir, 'plugin.json'), '{}');
+    writeFileSync(join(installedDir, 'mcp_config.json'), JSON.stringify({ mcpServers: {} }));
+    writeFileSync(join(installedDir, 'hooks.json'), JSON.stringify({ 'agy-max-ssh-boundary': { enabled: false } }));
+    const assets = Object.fromEntries(['proxy', 'accounts'].map(id => [
+      moduleReleaseName(id, '1.4.0'),
+      encodeModuleBundle(collectModuleBundle(join(REPO_ROOT, 'packages', id), '1.4.0', { repoRoot: REPO_ROOT }))
+    ]));
+    let releaseAccounts;
+    const accountsGate = new Promise(resolve => { releaseAccounts = resolve; });
+    const fetcher = async url => {
+      const name = String(url).split('/').pop();
+      if (name.endsWith('.sha256')) return { ok: true, text: async () => `${sha256Hex(assets[name.slice(0, -7)])}  ${name.slice(0, -7)}\n` };
+      if (name.includes('accounts')) await accountsGate;
+      return { ok: true, url: 'https://objects.githubusercontent.com/asset', arrayBuffer: async () => assets[name] };
+    };
+    const removed = { accounts: [], ssh: [] };
+    const vaults = { accounts: { removeSaved: id => removed.accounts.push(id) }, ssh: { removePassword: id => removed.ssh.push(id) } };
+    const make = version => createModuleRegistry({
+      home: s.home, pluginRoot: REPO_ROOT, installedPluginDir: installedDir, dataDir: s.dataDir,
+      settingsStore: createSettingsStore(s.dataDir), defaultSettings: DEFAULT_SETTINGS,
+      version, githubUrl: 'https://github.com/owner/repo', fetcher, syncIntegrations: true, vaults
+    });
+
+    const old = make('1.4.0');
+    const slowInstall = old.installModule('accounts');
+    await old.installModule('proxy');
+    releaseAccounts();
+    assert.equal((await slowInstall).delivery, 'online');
+    assert.equal(old.isActive('proxy'), true);
+    assert.equal(old.isActive('accounts'), true);
+
+    const upgraded = make('1.4.2');
+    upgraded.ensureInitialized();
+    const receipt = JSON.parse(readFileSync(join(s.dataDir, 'modules', 'proxy', '.agy-module-receipt.json'), 'utf8'));
+    assert.notEqual(receipt.onlineInstalled, true);
+    assert.ok(receipt.seedSha256);
+
+    writeFileSync(join(s.dataDir, 'accounts.json'), JSON.stringify({ activeId: 'acc-1', accounts: [{ id: 'acc-1', email: 'a@example.com' }, { id: 'acc-2', email: 'b@example.com' }] }));
+    await upgraded.uninstallModule('accounts', { purgeData: true });
+    assert.deepEqual(removed.accounts, ['acc-1', 'acc-2']);
+
+    mkdirSync(join(s.dataDir, 'ssh-projects'), { recursive: true });
+    writeFileSync(join(s.dataDir, 'ssh-projects', 'hosts.json'), JSON.stringify({ format: 1, hosts: { 'host-1': { id: 'host-1' } } }));
+    make('1.4.2').ensureInitialized();
+    const hooksWithData = JSON.parse(readFileSync(join(installedDir, 'hooks.json'), 'utf8'));
+    assert.equal(hooksWithData['agy-max-ssh-boundary'].enabled, true);
+    assert.deepEqual(JSON.parse(readFileSync(join(installedDir, 'mcp_config.json'), 'utf8')), { mcpServers: {} });
+    await make('1.4.2').uninstallModule('ssh-remote', { purgeData: true });
+    assert.deepEqual(removed.ssh, ['host-1']);
+    assert.equal(JSON.parse(readFileSync(join(installedDir, 'hooks.json'), 'utf8'))['agy-max-ssh-boundary'].enabled, false);
   } finally {
     s.clean();
   }

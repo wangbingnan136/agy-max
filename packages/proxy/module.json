@@ -1,6 +1,6 @@
 {
   "id": "proxy",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "coreRange": ">=1.4.0",
   "defaultInstalled": false,
   "displayName": { "zh-CN": "免 TUN 独立代理", "en": "Standalone Proxy (No-TUN)" },

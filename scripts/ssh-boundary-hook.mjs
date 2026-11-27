@@ -66,6 +66,11 @@ export async function runHook(raw, cliEvent) {
   if (!payload || typeof payload !== 'object') payload = {};
   if (!payload.hookEventName && cliEvent) payload.hookEventName = cliEvent;
   const event = String(payload.hookEventName || cliEvent || '');
+  // No cwd (e.g. empty stdin): judge by the process cwd and fail closed inside an SSH project.
+  if (!payload.cwd && !(Array.isArray(payload.workspacePaths) && payload.workspacePaths.length)) {
+    const fallback = { ...payload, cwd: process.cwd() };
+    if (probeSshMarker(fallback)) return failClosedResult(event, fallback, new Error('hook 输入缺少 cwd'));
+  }
   try {
     const { evaluateSshBoundaryHook } = await import('../lib/ssh-boundary.mjs');
     let result = evaluateSshBoundaryHook(payload);

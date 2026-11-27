@@ -7,6 +7,7 @@ import {
   DEFAULT_MODULE_IDS,
   MODULE_BY_ID,
   MODULE_CATALOG,
+  detectLegacyUsedOptionalModules,
   isKnownModuleId
 } from './catalog.mjs';
 import {
@@ -23,7 +24,7 @@ const SSH_MCP_SERVER_CONFIG = Object.freeze({
     command: 'node',
     args: [
       '-e',
-      "var f=require('fs'),p=require('path'),o=require('os'),u=require('url'),e=process.env,h='';try{h=o.homedir()}catch(x){}for(var d of[e.PLUGIN_ROOT,e.AGY_PLUGIN_ROOT,h?p.join(h,'.gemini','config','plugins','agy-max'):'','.']){if(d){var s=p.resolve(d,'scripts','ssh-mcp-server.mjs');if(f.existsSync(s)&&f.existsSync(p.resolve(d,'plugin.json'))){import(u.pathToFileURL(s).href);break;}}}"
+      "var f=require('fs'),p=require('path'),o=require('os'),u=require('url'),e=process.env,h='';try{h=o.homedir()}catch(x){}for(var d of[e.PLUGIN_ROOT,e.AGY_PLUGIN_ROOT,h?p.join(h,'.gemini','config','plugins','agy-max'):'']){if(d){var s=p.resolve(d,'scripts','ssh-mcp-server.mjs');if(f.existsSync(s)&&f.existsSync(p.resolve(d,'plugin.json'))){import(u.pathToFileURL(s).href);break;}}}"
     ]
   }
 });
@@ -78,7 +79,9 @@ function hasNonEmptyArrayInJson(filePath, key) {
   const data = readJsonSafe(filePath, null);
   if (!data || typeof data !== 'object') return false;
   if (Array.isArray(data)) return data.length > 0;
-  return Array.isArray(data[key]) && data[key].length > 0;
+  const value = data[key];
+  // ssh-projects stores hosts/projects as id-keyed objects, accounts.json as an array.
+  return Array.isArray(value) ? value.length > 0 : Boolean(value && typeof value === 'object' && Object.keys(value).length > 0);
 }
 
 async function downloadVerifiedBundle(id, version, githubUrl, fetcher) {
@@ -106,7 +109,10 @@ async function downloadVerifiedBundle(id, version, githubUrl, fetcher) {
       throw new Error('模块下载重定向域名不受信任');
     }
   }
+  const MAX_MODULE_BYTES = 16 * 1024 * 1024;
+  if (Number(bundleRes.headers?.get?.('content-length') || 0) > MAX_MODULE_BYTES) throw new Error('模块下载包过大');
   const buf = Buffer.from(await bundleRes.arrayBuffer());
+  if (buf.length > MAX_MODULE_BYTES) throw new Error('模块下载包过大');
   if (sha256Hex(buf) !== expectedSha) throw new Error('模块下载包 SHA-256 校验失败');
   return decodeModuleBundle(buf, { expectedId: id, expectedVersion: version });
 }
@@ -119,13 +125,16 @@ export function isSshModuleInstalled({ home = homedir() } = {}) {
   const manifestPath = join(root, 'antigravity', 'plugin_data', 'agy-max', 'modules-manifest.json');
   const manifest = readJsonSafe(manifestPath, null);
   if (!manifest || !Array.isArray(manifest.installed)) {
-    return false;
+    // Before the manifest is initialized, keep SSH tools for users upgrading with saved SSH projects.
+    const sshData = join(root, 'antigravity', 'plugin_data', 'agy-max', 'ssh-projects');
+    return hasNonEmptyArrayInJson(join(sshData, 'projects.json'), 'projects')
+      || hasNonEmptyArrayInJson(join(sshData, 'hosts.json'), 'hosts');
   }
   return manifest.installed.includes('ssh-remote')
     && existsSync(join(root, 'antigravity', 'plugin_data', 'agy-max', 'modules', 'ssh-remote', 'module.json'));
 }
 
-export function syncRuntimeModuleIntegrations({ installedPluginDir, sshActive }) {
+export function syncRuntimeModuleIntegrations({ installedPluginDir, sshActive, boundaryActive = sshActive }) {
   if (!installedPluginDir || !existsSync(join(installedPluginDir, 'plugin.json'))) return;
   try {
     const mcpPath = join(installedPluginDir, 'mcp_config.json');
@@ -140,7 +149,7 @@ export function syncRuntimeModuleIntegrations({ installedPluginDir, sshActive })
     if (existsSync(hooksPath) && !lstatSync(hooksPath).isSymbolicLink()) {
       const cur = readJsonSafe(hooksPath, null);
       if (cur && typeof cur === 'object' && cur['agy-max-ssh-boundary']) {
-        const nextFlag = Boolean(sshActive);
+        const nextFlag = Boolean(boundaryActive);
         if (cur['agy-max-ssh-boundary'].enabled !== nextFlag) {
           writeAtomicJson(hooksPath, {
             ...cur,
@@ -159,11 +168,12 @@ export function createModuleRegistry({
   dataDir = join(resolve(home), '.gemini', 'antigravity', 'plugin_data', 'agy-max'),
   settingsStore = null,
   defaultSettings = {},
-  version = '1.4.1',
+  version = '1.4.2',
   githubUrl = '',
   fetcher = globalThis.fetch,
   syncIntegrations = false,
-  onModulesChanged = null
+  onModulesChanged = null,
+  vaults = null
 } = {}) {
   const resolvedHome = resolve(home);
   const resolvedPluginRoot = resolve(pluginRoot || join(resolvedHome, '.gemini', 'config', 'plugins', 'agy-max'));
@@ -260,7 +270,9 @@ export function createModuleRegistry({
     const targetDir = installedPluginDir || resolvedPluginRoot;
     syncRuntimeModuleIntegrations({
       installedPluginDir: targetDir,
-      sshActive: Boolean(resolveModuleState('ssh-remote', manifest)?.active)
+      sshActive: Boolean(resolveModuleState('ssh-remote', manifest)?.active),
+      // Keep the local-execution guard while saved SSH projects exist, even with the module uninstalled.
+      boundaryActive: Boolean(resolveModuleState('ssh-remote', manifest)?.active) || hasSavedSshProjects()
     });
   }
 
@@ -268,7 +280,15 @@ export function createModuleRegistry({
     if (initializingManifest) return initializingManifest;
     let manifest = readManifest();
     if (!manifest) {
-      const initialInstalled = [...DEFAULT_MODULE_IDS];
+      // Upgraders from v1.4.x keep the optional modules they were using; fresh installs get the defaults only.
+      const settingsPath = join(resolvedDataDir, 'settings.json');
+      const legacyExtra = existsSync(settingsPath)
+        ? detectLegacyUsedOptionalModules(readJsonSafe(settingsPath, {}), {
+          hasSavedAccounts: hasNonEmptyArrayInJson(join(resolvedDataDir, 'accounts.json'), 'accounts'),
+          hasSavedSsh: hasSavedSshProjects()
+        })
+        : [];
+      const initialInstalled = [...new Set([...DEFAULT_MODULE_IDS, ...legacyExtra])];
       for (const id of initialInstalled) {
         const modDir = join(modulesRoot, id);
         const curSeedSha = seedDigest(id);
@@ -282,7 +302,7 @@ export function createModuleRegistry({
       manifest = {
         format: 1,
         initializedVersion: version,
-        migratedFromLegacy: false,
+        migratedFromLegacy: legacyExtra.length > 0,
         installed: initialInstalled,
         explicitlyUninstalled: []
       };
@@ -293,8 +313,11 @@ export function createModuleRegistry({
         const modDir = join(modulesRoot, id);
         const curSeedSha = seedDigest(id);
         const curReceipt = readJsonSafe(join(modDir, '.agy-module-receipt.json'), null);
+        // Online installs carry no seed hash, so refresh them from the bundled seed once the core version moves on.
         const needsRefresh = !existsSync(join(modDir, 'module.json'))
-          || (curSeedSha && curReceipt?.seedSha256 !== curSeedSha && !curReceipt?.onlineInstalled);
+          || (curReceipt?.onlineInstalled
+            ? curReceipt.version !== version
+            : Boolean(curSeedSha && curReceipt?.seedSha256 !== curSeedSha));
         if (needsRefresh) {
           try {
             extractBundleAtomically(id, loadBundleFromSeedOrPackage(id), curSeedSha);
@@ -345,11 +368,13 @@ export function createModuleRegistry({
     const modDataDir = join(moduleDataRoot, id);
     if (existsSync(join(modDataDir, 'settings.snapshot.json'))) return true;
     if (id === 'accounts' && hasNonEmptyArrayInJson(join(resolvedDataDir, 'accounts.json'), 'accounts')) return true;
-    if (id === 'ssh-remote') {
-      const sshDir = join(resolvedDataDir, 'ssh-projects');
-      if (hasNonEmptyArrayInJson(join(sshDir, 'projects.json'), 'projects') || hasNonEmptyArrayInJson(join(sshDir, 'hosts.json'), 'hosts')) return true;
-    }
+    if (id === 'ssh-remote' && hasSavedSshProjects()) return true;
     return false;
+  }
+
+  function hasSavedSshProjects() {
+    const sshDir = join(resolvedDataDir, 'ssh-projects');
+    return hasNonEmptyArrayInJson(join(sshDir, 'projects.json'), 'projects') || hasNonEmptyArrayInJson(join(sshDir, 'hosts.json'), 'hosts');
   }
 
   function listModules() {
@@ -428,13 +453,34 @@ export function createModuleRegistry({
       if (Object.keys(cleanPatch).length) settingsStore.set(cleanPatch);
     }
 
-    const nextInstalled = [...new Set([...manifest.installed, id])];
-    const nextUninstalled = manifest.explicitlyUninstalled.filter(x => x !== id);
-    const nextManifest = { ...manifest, installed: nextInstalled, explicitlyUninstalled: nextUninstalled };
+    // Re-read: another install/uninstall may have saved the manifest while this one was downloading.
+    const latest = readManifest() || manifest;
+    const nextInstalled = [...new Set([...latest.installed, id])];
+    const nextUninstalled = latest.explicitlyUninstalled.filter(x => x !== id);
+    const nextManifest = { ...latest, installed: nextInstalled, explicitlyUninstalled: nextUninstalled };
     saveManifest(nextManifest);
     syncIntegrationsIfNeeded(nextManifest);
     if (typeof onModulesChanged === 'function') await onModulesChanged({ action: 'install', id, activeIds: activeIds() });
     return { ok: true, id, delivery, modules: listModules() };
+  }
+
+  // Saved account and SSH secrets live in the OS keychain, keyed by ids that only the files deleted on purge remember.
+  async function purgeModuleCredentials(id) {
+    try {
+      if (id === 'accounts') {
+        const ids = (readJsonSafe(join(resolvedDataDir, 'accounts.json'), {})?.accounts || []).map(a => a?.id).filter(x => typeof x === 'string' && x);
+        if (!ids.length) return;
+        const vault = vaults?.accounts || (await import('../../lib/credential-vault.mjs')).createCredentialVault({ home: resolvedHome });
+        for (const accountId of ids) { try { vault.removeSaved(accountId); } catch {} }
+      }
+      if (id === 'ssh-remote') {
+        const hosts = readJsonSafe(join(resolvedDataDir, 'ssh-projects', 'hosts.json'), {})?.hosts;
+        const ids = hosts && typeof hosts === 'object' ? Object.keys(hosts) : [];
+        if (!ids.length) return;
+        const vault = vaults?.ssh || (await import('../../lib/ssh-vault.mjs')).createSshCredentialVault();
+        for (const hostId of ids) { try { vault.removePassword(hostId); } catch {} }
+      }
+    } catch { /* Purging local files must not fail because the keychain is unavailable. */ }
   }
 
   async function uninstallModule(id, { purgeData = false } = {}) {
@@ -460,6 +506,7 @@ export function createModuleRegistry({
     rmSync(storeDir, { recursive: true, force: true });
 
     if (purgeData) {
+      await purgeModuleCredentials(id);
       rmSync(modDataDir, { recursive: true, force: true });
       if (settingsStore?.set && meta?.settingsKeys?.length) {
         const resetPatch = {};

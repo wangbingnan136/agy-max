@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -699,4 +699,58 @@ test('extendedMenu nests Copy Conversation as Markdown inside the native Copy su
   assert.ok(copySub);
   assert.ok(copySub.items.some(it => it.id === 'agy-copy-session-md'));
   ctx.__agyPowertools.dispose();
+});
+
+test('corrupt state file is backed up and starts empty', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agy-ct-corrupt-'));
+  try {
+    writeFileSync(join(dir, 'chat-flow-tree.json'), '{not json');
+    const store = createChatTreeStore(dir);
+    assert.deepEqual(store.get().projectOverrides, {});
+    const backups = readdirSync(dir).filter(f => f.startsWith('chat-flow-tree.json.corrupt-'));
+    assert.equal(backups.length, 1);
+    assert.equal(readFileSync(join(dir, backups[0]), 'utf8'), '{not json');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('unreadable state file does not wipe saved state on write', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agy-ct-ebusy-'));
+  try {
+    const filePath = join(dir, 'chat-flow-tree.json');
+    // A directory where the file should be makes readFileSync fail with a non-ENOENT error (EISDIR), like EBUSY/EACCES.
+    mkdirSync(filePath);
+    const store = createChatTreeStore(dir);
+    assert.deepEqual(store.get().projectOverrides, {});
+    assert.throws(() => store.moveProject('conv-1', 'proj-1'));
+    assert.throws(() => store.setFolded('conv-1', true));
+
+    rmSync(filePath, { recursive: true, force: true });
+    writeFileSync(filePath, JSON.stringify({ projectOverrides: { 'conv-1': 'proj-1' } }));
+    // The failed read was not cached as an empty state, so the saved override is visible again.
+    assert.equal(store.get().projectOverrides['conv-1'], 'proj-1');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('patchProtoStringField rejects malformed blobs and keeps other fields intact', () => {
+  // Field 18, wire type 2, claims 5 bytes but only 1 follows.
+  assert.throws(() => patchProtoStringField(Buffer.from([0x92, 0x01, 0x05, 0x61]), 18, 'x'), /overruns/);
+  // Truncated varint tag.
+  assert.throws(() => patchProtoStringField(Buffer.from([0x80]), 18, 'x'), /truncated/);
+  // Unsupported wire type 3 (start group).
+  assert.throws(() => patchProtoStringField(Buffer.from([0x0b]), 18, 'x'), /wire type 3/);
+
+  const base = Buffer.concat([
+    Buffer.from([0x08, 0x2a]),
+    patchProtoStringField(Buffer.alloc(0), 7, 'file:///workspace/demo'),
+    patchProtoStringField(Buffer.alloc(0), 18, 'proj-old')
+  ]);
+  const patched = patchProtoStringField(base, 18, 'proj-new');
+  assert.deepEqual(patched.subarray(0, 2), Buffer.from([0x08, 0x2a]));
+  const decoded = fields(patched);
+  assert.equal(string(decoded, 7), 'file:///workspace/demo');
+  assert.equal(string(decoded, 18), 'proj-new');
 });

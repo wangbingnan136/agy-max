@@ -1,6 +1,6 @@
 {
   "id": "optics",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "coreRange": ">=1.4.0",
   "defaultInstalled": false,
   "displayName": { "zh-CN": "界面与光学", "en": "Interface & Optics" },

@@ -24,13 +24,14 @@ export const SITE_CONTENT = {
     lang: 'zh-CN',
     title: 'Antigravity Max — Antigravity 2.0 满血原生全能工作台',
     description:
-      'Antigravity 2.0 满血原生全能工作台增强插件：默认内置 agy-fast 加速引擎、原生辅助侧栏文件结构与原地编辑、类 Codex 工作流、Prism 光学主题、本地 53 周用量看板、多账号切换与免 TUN 代理。',
+      'Antigravity 2.0 满血原生全能工作台增强插件：1 个核心 + 8 个按需模块，默认内置 agy-fast 加速引擎、原生辅助侧栏文件结构与原地编辑、类 Codex 工作流、侧栏拖动移动会话、本地 53 周用量看板；Prism 光学主题、多账号切换、免 TUN 代理与单窗口 SSH 远程项目按需安装。',
     brand: 'Antigravity Max',
     altLangLabel: 'EN',
     altLangHref: '../',
     nav: [
       { label: '实拍预览', href: '#screenshots' },
       { label: '核心能力', href: '#capabilities' },
+      { label: '按需模块', href: '#modules' },
       { label: '快速安装', href: '#install' },
       { label: '更新日志', href: '#changelog' }
     ],
@@ -41,7 +42,7 @@ export const SITE_CONTENT = {
       badgeNote: '零侵入本地插件',
       titleLine1: 'Antigravity 2.0 满血原生工作台',
       titleLine2: '装上即全能',
-      lead: '默认内置 agy-fast 加速引擎、右侧原生文件结构与原地代码编辑、类 Codex 旗舰工作流、Prism 光学主题、本地用量看板、多账号隔离与免 TUN 代理。',
+      lead: '1 个核心 + 8 个模块，装你要的功能：默认内置 agy-fast 加速引擎、右侧原生文件结构与原地编辑、类 Codex 旗舰工作流、侧栏拖动移动会话与本地用量看板；Prism 光学、多账号、免 TUN 代理与 SSH 远程项目随时按需安装。',
       primaryCta: '复制一句话，让 Agent 自动装好',
       primaryCtaCopied: '已复制安装指令，直接发给 Agent',
       secondaryLink: '查看命令行与 ZIP 安装',
@@ -100,7 +101,7 @@ export const SITE_CONTENT = {
       anomalyTitle: '缓存异常追踪',
       anomalyRow: '14:22:08  |  agy-max  |  间隔 42s 缓存跌至 11%  |  疑似系统提示词变动',
       opticsTitle: '点击实时预览 Antigravity Max 内置的四套 Prism 光学配色',
-      opticsSub: '以下为插件内置的真实配色方案，在客户端「设置 -> 光学主题」中一键即生效，并可与水波试管自由组合。',
+      opticsSub: '以下为插件内置的真实配色方案。在「模块」页装上「界面与光学」后，到「设置 -> 界面与光学」一键生效，并可与水波试管自由组合。',
       palettes: [
         { id: 'crystal', name: 'Crystal 晶透', desc: '清爽蓝灰纸面，白天编码久看不累', mode: '浅色' },
         { id: 'obsidian', name: 'Obsidian 黑曜', desc: '深邃低眩光暗底，高亮钴蓝焦点', mode: '深色' },
@@ -157,25 +158,25 @@ export const SITE_CONTENT = {
           id: 'accounts',
           tab: '多账号额度',
           title: '系统凭据库多账号切换与额度管理',
-          caption: '通过系统原生钥匙串/凭据管理器隔离多个 Google 账号，集中查看 5 小时和周限额（默认关闭）。'
+          caption: '可选模块「多账号切换」：通过系统原生钥匙串/凭据管理器隔离多个 Google 账号，集中查看 5 小时和周限额。'
         },
         {
           id: 'settings',
           tab: '多语言与光学',
           title: '五语界面与 Prism 光学设置面板',
-          caption: '支持简/繁/粤/英/日切换、场景一键预设、光学配色、内置 agy-fast 开关与脱敏配置备份还原。'
+          caption: '支持简/繁/粤/英/日切换、按分类筛选设置、内置 agy-fast 开关与脱敏配置备份还原；装上「界面与光学」模块后可用场景预设与光学配色。'
         },
         {
           id: 'proxy',
           tab: '免 TUN 代理',
-          title: '免 TUN 应用级独立代理与更新校验',
-          caption: '无需全局 TUN，单独为 Antigravity 注入 HTTP / SOCKS5 代理、连通性测试与 SHA-256 校验更新（默认关闭）。'
+          title: '免 TUN 应用级独立代理',
+          caption: '可选模块「免 TUN 独立代理」：无需全局 TUN，单独为 Antigravity 注入 HTTP / SOCKS5 代理，内置连通性测试与强制 HTTP/1.1。'
         }
       ]
     },
     capabilities: {
       heading: '为重度工程流重做每一处高频细节',
-      subheading: '从减少 Agent 工具往返，到原生文件树原地编辑与跨机 SSH 同步，每一项都能直接在日常开发中省下实打实的时间。',
+      subheading: '从减少 Agent 工具往返，到原生文件树原地编辑与跨机 SSH 协作，每一项都能直接在日常开发中省下实打实的时间。',
       cards: [
         {
           id: 'fast',
@@ -190,22 +191,22 @@ export const SITE_CONTENT = {
         {
           id: 'codex',
           title: '全套类 Codex 旗舰工作流',
-          desc: '毫秒级本地 + SSH 历史会话全文搜索（⌘+⌥+F）、运行中会话铃铛与侧栏「优先事项」、/goal 悬浮目标胶囊与断点续跑、已归档会话批量管理与完整 Markdown 导出。'
+          desc: '毫秒级本地 + SSH 历史会话全文搜索（⌘+⌥+F）、运行中会话铃铛与侧栏「优先事项」、把会话拖到其他项目、/btw 子对话树、/goal 悬浮目标胶囊与断点续跑、已归档会话批量管理与完整 Markdown 导出。'
         },
         {
           id: 'prism',
-          title: 'Prism 光学主题与水波试管',
-          desc: '内置 Crystal / Obsidian / Alabaster / Warm 四套光学配色与场景预设，支持水波试管上下文指示器、推理档位滑杆记忆、长代码折叠与行内 Diff。'
+          title: 'Prism 光学主题与水波试管（可选模块）',
+          desc: '装上「界面与光学」即可使用 Crystal / Obsidian / Alabaster / Warm 四套光学配色、场景预设与水波试管上下文指示器；推理档位滑杆记忆、长代码折叠与行内 Diff 默认就有。'
         },
         {
           id: 'telemetry',
           title: '53 周本地用量看板与掉缓存诊断',
-          desc: '纯本地只读解析 SQLite 与 JSONL 会话，追踪缓存复用率、首字延迟、tok/s 吞吐和参考费用，并精准标红短间隔内异常掉缓存的请求。'
+          desc: '纯本地只读解析 SQLite 与 JSONL 会话，追踪缓存复用率、首字延迟、纯生成阶段 tok/s 和参考费用，精准标红短间隔内异常掉缓存的请求；数据库被占用时用量不清零、不倒退。'
         },
         {
           id: 'ssh-proxy',
-          title: 'SSH 命令粘贴解析、多账号与免 TUN 代理',
-          desc: '粘贴 ssh -p 2222 user@host 自动解析并丢弃末尾密码防误交；桌面端免装服务端直读 SSH 统计；可选开启系统凭据库多账号切换与免 TUN 代理。'
+          title: 'SSH 远程项目、多账号与免 TUN 代理（可选模块）',
+          desc: '单窗口挂载远程服务器目录，本机 AI 直接读写和执行；粘贴 ssh -p 2222 user@host 自动解析并丢弃末尾密码防误交；系统凭据库多账号切换与免 TUN 代理同样按需安装。'
         }
       ],
       visuals: {
@@ -225,6 +226,15 @@ export const SITE_CONTENT = {
         keyringTag: '系统钥匙串隔离'
       }
     },
+    modules: {
+      heading: '按需模块：装你要的功能',
+      subheading: '1 个轻量核心 + 8 个可热插拔模块。默认只装 4 个常用模块，其余在「Antigravity Max -> 模块」页一键安装或卸载；没装的模块不加载、不占内存，也不显示多余设置。',
+      defaultTitle: '默认安装',
+      defaultBadge: '默认',
+      optionalTitle: '按需安装',
+      optionalBadge: '可选',
+      points: ['GitHub Release 下载并做 SHA-256 校验', '断网自动改用内置离线副本', '卸载可保留配置或连同钥匙串凭据彻底清除', '从 v1.4.x 升级自动保留在用模块', 'agy-<模块名> 本地开发目录优先挂载']
+    },
     credits: {
       heading: '开源透明，站在社区巨人的肩膀上',
       subheading: '零侵入挂载、MIT 开源、所有统计均在本地完成；清晰致谢每一份上游灵感与集成套件。',
@@ -234,8 +244,8 @@ export const SITE_CONTENT = {
           body: '紧跟 Antigravity 2.35.1+ 官方原生能力和更新节奏，不用在「官方新特性」和「顺手的工作流」之间二选一。安装过程不改写客户端安装包，随时可一键还原或保留设置卸载。'
         },
         {
-          title: '本地优先，敏感能力默认关闭',
-          body: '会话遥测、全文检索与文件编辑全部在本机完成，不向任何第三方服务器上传聊天内容。多账号切换与免 TUN 代理默认关闭，按需在设置页手动开启，凭据由操作系统原生钥匙串托管。'
+          title: '本地优先，敏感能力按需安装',
+          body: '会话遥测、全文检索与文件编辑全部在本机完成，不向任何第三方服务器上传聊天内容。多账号切换、免 TUN 代理与 SSH 远程项目是可选模块，不装就不加载；凭据由操作系统原生钥匙串托管，卸载时可连同钥匙串里的凭据一起清除。'
         }
       ],
       tableTitle: '开源来源与致谢',
@@ -273,7 +283,7 @@ export const SITE_CONTENT = {
       copyBtn: '复制提示词',
       copiedBtn: '已复制',
       cliTitle: '方式二：命令行与 Release ZIP 安装',
-      cliDesc: '从 GitHub Releases 下载最新 ZIP 解压（或克隆仓库），在项目根目录运行对应脚本；覆盖安装会保留已有设置，应用内支持 SHA-256 校验更新与失败自动回滚。',
+      cliDesc: '从 GitHub Releases 下载最新 ZIP 解压（或克隆仓库），在项目根目录运行对应脚本；覆盖安装会保留已有设置，应用内支持 SHA-256 校验更新与失败自动回滚。从 v1.4.1 及更早版本升级到 v1.4.2，请用这种方式重装一次。',
       platforms: [
         {
           name: 'macOS',
@@ -310,25 +320,25 @@ export const SITE_CONTENT = {
       allReleasesLabel: '在 GitHub 查看全部版本',
       entries: [
         {
-          version: 'v1.4.1',
+          version: 'v1.4.2',
           tag: '最新',
+          title: '按需模块化、侧栏拖动移动会话、/btw 子对话树与「版本更新」页',
+          highlights: [
+            '拆成 1 个核心 + 8 个可热插拔模块：默认装 4 个常用模块，界面与光学、多账号、代理、SSH 远端工程在「Antigravity Max -> 模块」页按需安装（SHA-256 校验、断网用离线包、卸载可保留或清除数据）。从 v1.4.x 升级会保留你在用的模块。',
+            '把会话拖到其他项目即可移动；/btw 侧边提问收在主对话下方并可折叠；调推理档位时原生模型列表不再闪烁。',
+            '设置里的「全部」页换成「版本更新」，可一键自动更新并阅读发布说明；速度改为只算生成阶段的 tok/s，数据库被占用时用量不再清零或倒退。',
+            'SSH 远端执行边界更安全、远端输出更干净，macOS 钥匙串完整保存大凭据，内置 agy-fast 升级到 v0.3.2。从 v1.4.1 及更早版本升级需手动重装一次，之后恢复应用内更新。'
+          ]
+        },
+        {
+          version: 'v1.4.1',
+          tag: '',
           title: 'SSH 连接与传文件更稳、图片右键菜单修复、下线本地壁纸',
           highlights: [
             'SSH 握手被中途断开时自动重试一次（命令尚未执行，不会重复运行）；持续失败会提示是网络或网关问题，不再误报为密钥错误。',
             '服务器没有 sftp 子系统时，传文件自动改用旧版 scp 协议；一键免密改为给每台服务器单独生成密钥，并启用 IdentitiesOnly 防止认证次数被用光。',
             '修复 [Image #N] 图片芯片吞掉右键、图片右键菜单弹不出来的问题。',
             '下线几乎看不见、还会挤压聊天布局的本地壁纸功能，旧设置中的壁纸项自动忽略。升级后需完全退出并重新打开 Antigravity。'
-          ]
-        },
-        {
-          version: 'v1.4.1',
-          tag: 'Latest',
-          title: 'Sturdier SSH connections and transfers, image context menu fix, local wallpaper removed',
-          highlights: [
-            'A dropped SSH handshake is retried once (the command had not started, so it never runs twice); persistent failures are reported as network or gateway problems instead of a wrong key.',
-            'Transfers fall back to the legacy scp protocol on servers without sftp, and one-click passwordless login now creates a dedicated key per server with IdentitiesOnly enabled.',
-            'Fixed [Image #N] image chips swallowing right clicks, which kept the image context menu from opening.',
-            'Removed the barely visible local wallpaper that squeezed the chat layout; leftover wallpaper settings are ignored. Fully quit and reopen Antigravity after upgrading.'
           ]
         },
         {
@@ -400,13 +410,14 @@ export const SITE_CONTENT = {
     lang: 'en',
     title: 'Antigravity Max — All-in-One Native Workbench for Antigravity 2.0',
     description:
-      'Flagship native workbench plugin for Antigravity 2.0: built-in agy-fast accelerator, native Side Panel File Tree with inline editing, Codex-style workflow suite, Prism optics, local 53-week dashboard, multi-account switcher, and no-TUN proxy.',
+      'Flagship native workbench plugin for Antigravity 2.0: 1 core + 8 on-demand modules with the built-in agy-fast accelerator, native Side Panel File Tree with inline editing, Codex-style workflow suite, drag-to-move conversations, and a local 53-week dashboard; Prism optics, multi-account switcher, no-TUN proxy, and single-window SSH projects install on demand.',
     brand: 'Antigravity Max',
     altLangLabel: '中文',
     altLangHref: './zh/',
     nav: [
       { label: 'Screenshots', href: '#screenshots' },
       { label: 'Capabilities', href: '#capabilities' },
+      { label: 'Modules', href: '#modules' },
       { label: 'Install', href: '#install' },
       { label: 'Changelog', href: '#changelog' }
     ],
@@ -417,7 +428,7 @@ export const SITE_CONTENT = {
       badgeNote: 'Non-invasive local plugin',
       titleLine1: 'The flagship native workbench',
       titleLine2: 'for Antigravity 2.0',
-      lead: 'Ships with the built-in agy-fast accelerator, native Side Panel File Tree with inline editing, Codex-style search & goals workflow, Prism optical themes, local usage telemetry, multi-account isolation, and no-TUN proxy.',
+      lead: 'One core, eight modules, only what you use: the built-in agy-fast accelerator, native Side Panel File Tree with inline editing, Codex-style search & goals workflow, drag-to-move conversations, and local usage telemetry, plus Prism optics, multi-account, no-TUN proxy, and SSH projects whenever you want them.',
       primaryCta: 'Copy one-line prompt for your Agent',
       primaryCtaCopied: 'Prompt copied — paste it to your Agent',
       secondaryLink: 'View CLI & ZIP install',
@@ -476,7 +487,7 @@ export const SITE_CONTENT = {
       anomalyTitle: 'Cache anomaly detector',
       anomalyRow: '14:22:08  |  agy-max  |  42s gap dropped to 11%  |  System prompt changed',
       opticsTitle: 'Preview all four built-in Prism optical palettes live',
-      opticsSub: 'Real palettes bundled in Antigravity Max. Switch them live in Settings -> Optics and pair freely with the Ring or Liquid Vial gauge.',
+      opticsSub: 'Real palettes bundled in Antigravity Max. Install the Interface & Optics module, then switch them live in Settings -> Interface & Optics and pair freely with the Ring or Liquid Vial gauge.',
       palettes: [
         { id: 'crystal', name: 'Crystal', desc: 'Crisp cool paper tone built for bright daylight sessions', mode: 'Light' },
         { id: 'obsidian', name: 'Obsidian', desc: 'Low-glare dark slate anchored by cobalt focus accents', mode: 'Dark' },
@@ -533,19 +544,19 @@ export const SITE_CONTENT = {
           id: 'accounts',
           tab: 'Multi-Account',
           title: 'OS-keyring multi-account & quota switcher',
-          caption: 'Isolate and switch multiple Google accounts locally via system keyrings with unified 5-hour and weekly quota visibility (off by default).'
+          caption: 'Optional Multi-Account Switcher module: isolate and switch multiple Google accounts locally via system keyrings with unified 5-hour and weekly quota visibility.'
         },
         {
           id: 'settings',
           tab: 'Languages & Optics',
           title: 'Five-language UI & Prism optical settings',
-          caption: 'Switch UI languages, scene presets, optical themes, the built-in agy-fast toggle, and sanitized JSON backups live.'
+          caption: 'Switch UI languages, filter settings by category, toggle the built-in agy-fast accelerator, and back up sanitized JSON live; scene presets and optical themes arrive with the Interface & Optics module.'
         },
         {
           id: 'proxy',
           tab: 'No-TUN Proxy',
-          title: 'App-scoped HTTP / SOCKS5 proxy & verified updates',
-          caption: 'Route only Antigravity without a system TUN driver, run connectivity tests, and apply SHA-256 verified in-app updates (off by default).'
+          title: 'App-scoped HTTP / SOCKS5 proxy',
+          caption: 'Optional Standalone Proxy module: route only Antigravity without a system TUN driver, with connectivity tests and Force HTTP/1.1.'
         }
       ]
     },
@@ -566,22 +577,22 @@ export const SITE_CONTENT = {
         {
           id: 'codex',
           title: 'Codex-style flagship workflow suite',
-          desc: 'Millisecond local + SSH full-text chat search (⌘+⌥+F), active-sessions bell with persisted Priority list, floating /goal tracker with resume, archived chats manager, and full tool-chain Markdown export.'
+          desc: 'Millisecond local + SSH full-text chat search (⌘+⌥+F), active-sessions bell with persisted Priority list, drag conversations between projects, nested /btw side chats, floating /goal tracker with resume, archived chats manager, and full tool-chain Markdown export.'
         },
         {
           id: 'prism',
-          title: 'Prism optics & liquid vial gauge',
-          desc: 'Four optical palettes (Crystal, Obsidian, Alabaster, Warm), scene presets, liquid vial context indicator, per-model reasoning slider memory, code folding, and inline step diffs.'
+          title: 'Prism optics & liquid vial gauge (optional module)',
+          desc: 'Install Interface & Optics for four optical palettes (Crystal, Obsidian, Alabaster, Warm), scene presets, and the liquid vial context indicator; per-model reasoning slider memory, code folding, and inline step diffs ship by default.'
         },
         {
           id: 'telemetry',
           title: '53-week local dashboard & cache alerts',
-          desc: 'Read-only local SQLite and JSONL analytics tracking cache hit rate, TTFT, tok/s speed, reference cost, and short-interval cache anomalies.'
+          desc: 'Read-only local SQLite and JSONL analytics tracking cache hit rate, TTFT, decode-phase tok/s, reference cost, and short-interval cache anomalies; a locked database never zeroes or rolls back usage.'
         },
         {
           id: 'ssh-proxy',
-          title: 'SSH paste parsing, multi-account & no-TUN proxy',
-          desc: 'Paste ssh -p 2222 user@host to auto-fill host and port while stripping trailing passwords; read SSH stats with zero remote install; optional OS-keyring multi-account and app-scoped proxy.'
+          title: 'SSH projects, multi-account & no-TUN proxy (optional modules)',
+          desc: 'Mount remote server folders in one window and let the local AI read, write, and run there; paste ssh -p 2222 user@host to auto-fill host and port while stripping trailing passwords; OS-keyring multi-account and app-scoped proxy install on demand too.'
         }
       ],
       visuals: {
@@ -601,6 +612,15 @@ export const SITE_CONTENT = {
         keyringTag: 'OS keyring isolated'
       }
     },
+    modules: {
+      heading: 'Modules: install only what you use',
+      subheading: 'One lightweight core plus eight hot-pluggable modules. Four everyday modules ship by default; install or remove the rest from Antigravity Max -> Modules. Modules you skip never load, use no memory, and add no settings.',
+      defaultTitle: 'Installed by default',
+      defaultBadge: 'Default',
+      optionalTitle: 'Install on demand',
+      optionalBadge: 'Optional',
+      points: ['SHA-256 verified downloads from GitHub Releases', 'Bundled offline copy when you are offline', 'Uninstall keeps settings or purges them with keychain credentials', 'Upgrades from v1.4.x keep the modules you use', 'agy-<module> Dev-Local folders mount first']
+    },
     credits: {
       heading: 'Open source, built openly on community craft',
       subheading: 'Non-invasive mounting, MIT licensed, local-first privacy, and clear credit to every upstream project that shaped it.',
@@ -610,8 +630,8 @@ export const SITE_CONTENT = {
           body: 'Staying natively inside Antigravity 2.35.1+ means you keep every upstream feature the day it ships while gaining an opinionated workbench. The installer never modifies the app binary and cleanly uninstalls anytime.'
         },
         {
-          title: 'Local-first privacy with opt-in sensitive tools',
-          body: 'Telemetry, full-text search, and file previews run locally without sending conversations anywhere. Multi-account switching and no-TUN proxy stay off by default until you explicitly enable them.'
+          title: 'Local-first privacy, sensitive tools on demand',
+          body: 'Telemetry, full-text search, and file previews run locally without sending conversations anywhere. Multi-account switching, no-TUN proxy, and SSH projects are optional modules that never load until you install them; credentials live in the OS keyring and can be purged with the module.'
         }
       ],
       tableTitle: 'Open-Source Origins & Credits',
@@ -649,7 +669,7 @@ export const SITE_CONTENT = {
       copyBtn: 'Copy prompt',
       copiedBtn: 'Copied',
       cliTitle: 'Option 2: Command line & Release ZIP',
-      cliDesc: 'Download and extract the latest ZIP from GitHub Releases (or clone the repo), then run the installer. Re-installing preserves preferences, and in-app updates verify SHA-256 with automatic rollback.',
+      cliDesc: 'Download and extract the latest ZIP from GitHub Releases (or clone the repo), then run the installer. Re-installing preserves preferences, and in-app updates verify SHA-256 with automatic rollback. Upgrading from v1.4.1 or earlier to v1.4.2 needs one reinstall this way.',
       platforms: [
         {
           name: 'macOS',
@@ -685,6 +705,28 @@ export const SITE_CONTENT = {
       subheading: 'Continuously aligned with the latest Antigravity releases, shipped with SHA-256 bundles and unit tests.',
       allReleasesLabel: 'View all releases on GitHub',
       entries: [
+        {
+          version: 'v1.4.2',
+          tag: 'Latest',
+          title: 'Modular install, drag conversations between projects, nested /btw side chats, and an Updates tab',
+          highlights: [
+            'Split into 1 core + 8 hot-pluggable modules: 4 everyday modules by default, while Optics, Multi-Account, Proxy and SSH Projects install on demand from Antigravity Max -> Modules (SHA-256 verified, offline fallback, keep or purge data on uninstall). Upgrades from v1.4.x keep the modules you use.',
+            'Drag a conversation onto another project; /btw side questions fold under their main conversation; the native model list no longer flashes when adjusting effort.',
+            'The "All" settings tab became "Updates" with one-click auto-update and release notes; speed now counts decode-phase tok/s and usage stats never zero out or roll back on a locked database.',
+            'Safer SSH boundary and cleaner remote output, full-size macOS Keychain secrets, and agy-fast v0.3.2. Upgrading from v1.4.1 or earlier needs one manual reinstall; in-app updates work again afterwards.'
+          ]
+        },
+        {
+          version: 'v1.4.1',
+          tag: '',
+          title: 'Sturdier SSH connections and transfers, image context menu fix, local wallpaper removed',
+          highlights: [
+            'A dropped SSH handshake is retried once (the command had not started, so it never runs twice); persistent failures are reported as network or gateway problems instead of a wrong key.',
+            'Transfers fall back to the legacy scp protocol on servers without sftp, and one-click passwordless login now creates a dedicated key per server with IdentitiesOnly enabled.',
+            'Fixed [Image #N] image chips swallowing right clicks, which kept the image context menu from opening.',
+            'Removed the barely visible local wallpaper that squeezed the chat layout; leftover wallpaper settings are ignored. Fully quit and reopen Antigravity after upgrading.'
+          ]
+        },
         {
           version: 'v1.4.0',
           tag: '',

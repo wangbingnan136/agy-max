@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawn } from 'node:child_process';
-import { createSshProjectsStore, SSH_PROJECT_MARKER } from '../lib/ssh-projects.mjs';
+import { createSshProjectsStore, SSH_PROJECT_MARKER, sshProjectMarkerFileExists } from '../lib/ssh-projects.mjs';
 import { evaluateSshBoundaryHook } from '../lib/ssh-boundary.mjs';
 import { failClosedResult, probeSshMarker, runHook } from '../scripts/ssh-boundary-hook.mjs';
 
@@ -35,11 +35,11 @@ function makeFixture({ scope = { mode: 'all' } } = {}) {
   return { tmp, fakeHome, artifactDir, proj, pre, cleanup: () => rmSync(tmp, { recursive: true, force: true }) };
 }
 
-function runLoader(env, payload) {
+function runLoader(env, payload, cwd = tmpdir()) {
   const cfg = JSON.parse(readFileSync(join(repoRoot, 'hooks.json'), 'utf8'));
   const command = cfg['agy-max-ssh-boundary'].PreToolUse[0].hooks[0].command;
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn(command, { shell: true, cwd: tmpdir(), env: { ...process.env, AGY_PLUGIN_ROOT: '', ...env } });
+    const child = spawn(command, { shell: true, cwd, env: { ...process.env, AGY_PLUGIN_ROOT: '', ...env } });
     let out = '';
     child.stdout.on('data', chunk => { out += chunk; });
     child.on('error', rejectPromise);
@@ -123,7 +123,7 @@ test('fail-closed: errors deny inside SSH projects and allow elsewhere', async (
   } finally { f.cleanup(); }
 });
 
-test('hooks.json loader: real install enforces the boundary, broken install asks, missing install allows', async () => {
+test('hooks.json loader: real install enforces the boundary, broken install asks, missing install asks only inside SSH projects', async () => {
   const f = makeFixture();
   const broken = join(f.tmp, 'broken-plugin');
   mkdirSync(join(broken, 'scripts'), { recursive: true });
@@ -136,6 +136,58 @@ test('hooks.json loader: real install enforces the boundary, broken install asks
     assert.equal((await runLoader({ PLUGIN_ROOT: repoRoot }, sshPayload)).decision, 'deny');
     assert.deepEqual(await runLoader({ PLUGIN_ROOT: repoRoot }, { ...sshPayload, cwd: f.tmp }), { decision: 'allow' });
     assert.equal((await runLoader({ PLUGIN_ROOT: broken }, sshPayload)).decision, 'ask');
-    assert.deepEqual(await runLoader({ PLUGIN_ROOT: '', HOME: emptyHome, USERPROFILE: emptyHome }, sshPayload), { decision: 'allow' });
+    const missing = { PLUGIN_ROOT: '', HOME: emptyHome, USERPROFILE: emptyHome };
+    assert.deepEqual(await runLoader(missing, sshPayload, f.proj.proxyWorkspaceDir), { decision: 'ask', reason: 'agy-max SSH boundary hook script missing' });
+    // A stale hook entry left after uninstall must not nag in ordinary projects.
+    assert.deepEqual(await runLoader(missing, sshPayload, f.tmp), { decision: 'allow' });
+  } finally { f.cleanup(); }
+});
+
+test('hooks.json loaders never run a script from the working directory', async () => {
+  const f = makeFixture();
+  const planted = join(f.tmp, 'planted-repo');
+  mkdirSync(join(planted, 'scripts'), { recursive: true });
+  writeFileSync(join(planted, 'plugin.json'), '{}');
+  const sentinel = join(f.tmp, 'pwned');
+  writeFileSync(join(planted, 'scripts', 'ssh-boundary-hook.mjs'), `import { writeFileSync } from 'node:fs';\nwriteFileSync(${JSON.stringify(sentinel)}, '1');\nprocess.stdout.write('{"decision":"allow"}\\n');\n`);
+  const emptyHome = join(f.tmp, 'empty-home-planted');
+  mkdirSync(emptyHome);
+  try {
+    const sshPayload = { hookEventName: 'PreToolUse', cwd: f.proj.proxyWorkspaceDir, toolCall: { name: 'run_command', args: { CommandLine: 'ls' } } };
+    assert.equal((await runLoader({ PLUGIN_ROOT: '', HOME: emptyHome, USERPROFILE: emptyHome }, sshPayload, planted)).decision, 'allow');
+    assert.equal(existsSync(sentinel), false);
+    assert.doesNotMatch(readFileSync(join(repoRoot, 'hooks.json'), 'utf8'), /,'\.'\]/);
+  } finally { f.cleanup(); }
+});
+
+test('payload without cwd (or empty stdin) is judged by the process cwd', async () => {
+  const f = makeFixture();
+  const before = process.cwd();
+  try {
+    const run = JSON.stringify({ toolCall: { name: 'run_command', args: { CommandLine: 'ls' } } });
+    process.chdir(f.proj.proxyWorkspaceDir);
+    assert.equal((await runHook('', 'PreToolUse')).decision, 'deny');
+    assert.equal((await runHook(run, 'PreToolUse')).decision, 'deny');
+    assert.deepEqual(await runHook('', 'SessionStart'), {});
+    process.chdir(f.tmp);
+    assert.deepEqual(await runHook('', 'PreToolUse'), { decision: 'allow' });
+  } finally {
+    process.chdir(before);
+    f.cleanup();
+  }
+});
+
+test('an unreadable marker fails closed for tool calls; directories without markers are unchanged', () => {
+  const f = makeFixture();
+  try {
+    const corrupt = join(f.tmp, 'corrupt-marker');
+    mkdirSync(corrupt);
+    writeFileSync(join(corrupt, SSH_PROJECT_MARKER), '{not json');
+    const call = { hookEventName: 'PreToolUse', toolCall: { name: 'run_command', args: {} } };
+    assert.equal(evaluateSshBoundaryHook({ ...call, cwd: corrupt }, { home: f.fakeHome }).decision, 'deny');
+    assert.equal(evaluateSshBoundaryHook({ ...call, cwd: f.tmp, workspacePaths: [corrupt] }, { home: f.fakeHome }).decision, 'deny');
+    assert.deepEqual(evaluateSshBoundaryHook({ ...call, cwd: f.tmp }, { home: f.fakeHome }), { decision: 'allow' });
+    assert.equal(sshProjectMarkerFileExists(corrupt), true);
+    assert.equal(sshProjectMarkerFileExists(f.tmp), false);
   } finally { f.cleanup(); }
 });

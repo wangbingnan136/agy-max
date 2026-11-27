@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {checkForUpdates,compareVersions,githubRepository} from '../lib/updates.mjs';
+import {PACKAGE_ITEMS,releaseName} from '../lib/package.mjs';
 
 test('release comparison uses version numbers and stable/prerelease ordering',()=>{
   assert.equal(compareVersions('v2.11.0','2.9.9'),1);assert.equal(compareVersions('2.11.0','2.11.0'),0);
@@ -26,4 +27,18 @@ test('update check queries only published releases and reports unavailable versi
   assert.equal((await checkForUpdates({...options,fetcher:async()=>new Response(JSON.stringify({tag_name:'v2.12.0',prerelease:true}))})).status,'unsupported-release');
   await assert.rejects(()=>checkForUpdates({...options,fetcher:async()=>{throw Error('offline');}}),/offline/);
   await assert.rejects(()=>checkForUpdates({...options,fetcher:async()=>new Response('{bad json')}));
+});
+
+test('auto-update only installs the current package format, so v1.4.1 clients fall back to the download page',async()=>{
+  const asset=name=>({name,state:'uploaded',digest:'sha256:'+'a'.repeat(64)});
+  const check=assets=>checkForUpdates({currentVersion:'1.4.1',project:{githubUrl:'https://github.com/owner/repo'},fetcher:async()=>new Response(JSON.stringify({tag_name:'v1.4.2',assets}))});
+  assert.equal(releaseName('1.4.2'),'agy-max-v1.4.2.pkg.gz');
+  const current=await check([asset('agy-max-v1.4.2.pkg.gz')]);
+  assert.equal(current.canInstall,true);assert.equal(current.asset.name,'agy-max-v1.4.2.pkg.gz');
+  assert.equal((await check([asset('agy-max-v1.4.2.bundle.gz')])).canInstall,false);
+});
+
+test('package top-level layout is frozen for the current asset name',()=>{
+  // Older updaters reject unknown top-level entries. If this list changes, rename releaseName() in lib/package.mjs too.
+  assert.deepEqual(PACKAGE_ITEMS,['packages','vendor','ui','assets','rules','skills','sidecars','lib','scripts','docs','package.json','package-lock.json','plugin.json','hooks.json','mcp_config.json','project.json','README.md','README_EN.md','LICENSE','install.ps1','uninstall.ps1','install.sh','uninstall.sh']);
 });

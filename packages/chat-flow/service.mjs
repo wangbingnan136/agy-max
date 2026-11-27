@@ -24,7 +24,7 @@ export async function registerModule(bus, ctx) {
     settings: ctx.settings,
     dataDir: ctx.dataDir,
     workspaceOf: id => {
-      const movedPid = chatTree.get().projectOverrides[id];
+      const movedPid = chatTree.projectOverride(id);
       if (movedPid === OUTSIDE_OF_PROJECT) return '';
       return readDatabase(ctx.appDir, id)?.workspaceUri;
     }

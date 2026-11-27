@@ -32,42 +32,37 @@ function encodeVarint(num) {
 }
 
 // Field 18 on CortexTrajectoryMetadata is project_id (string, wire type 2).
+// Strict: throws on truncated varints, overrunning fields, or unknown wire types, so a malformed blob is never rewritten.
+function readVarintAt(src, pos) {
+  let value = 0;
+  for (let shift = 0; shift < 63; shift += 7) {
+    if (pos >= src.length) throw new Error('protobuf: truncated varint');
+    const b = src[pos++];
+    value += (b & 0x7f) * 2 ** shift;
+    if (!(b & 0x80)) return { value, pos };
+  }
+  throw new Error('protobuf: varint too long');
+}
+
 export function patchProtoStringField(buffer, fieldNumber, nextValue) {
   const src = Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || []);
   const chunks = [];
   let i = 0;
   while (i < src.length) {
     const start = i;
-    let tag = 0;
-    let shift = 0;
-    while (i < src.length) {
-      const b = src[i++];
-      tag |= (b & 0x7f) << shift;
-      if (!(b & 0x80)) break;
-      shift += 7;
-    }
-    const fn = tag >>> 3;
-    const wt = tag & 7;
-    if (wt === 0) {
-      while (i < src.length && (src[i++] & 0x80)) { /* skip varint */ }
-    } else if (wt === 2) {
-      let len = 0;
-      let s2 = 0;
-      while (i < src.length) {
-        const b = src[i++];
-        len |= (b & 0x7f) << s2;
-        if (!(b & 0x80)) break;
-        s2 += 7;
-      }
-      i = Math.min(src.length, i + len);
-    } else if (wt === 5) {
-      i = Math.min(src.length, i + 4);
-    } else if (wt === 1) {
-      i = Math.min(src.length, i + 8);
-    } else {
-      chunks.push(src.subarray(start));
-      break;
-    }
+    const tag = readVarintAt(src, i);
+    i = tag.pos;
+    const fn = Math.floor(tag.value / 8);
+    const wt = tag.value % 8;
+    if (fn === 0) throw new Error('protobuf: invalid field number 0');
+    if (wt === 0) i = readVarintAt(src, i).pos;
+    else if (wt === 1) i += 8;
+    else if (wt === 5) i += 4;
+    else if (wt === 2) {
+      const len = readVarintAt(src, i);
+      i = len.pos + len.value;
+    } else throw new Error(`protobuf: unsupported wire type ${wt}`);
+    if (i > src.length) throw new Error('protobuf: field overruns buffer');
     if (fn !== fieldNumber) chunks.push(src.subarray(start, i));
   }
   if (typeof nextValue === 'string' && nextValue.length > 0) {
@@ -304,14 +299,28 @@ export function createChatTreeStore(dataDir, { appDir = '', proto = null } = {})
   const filePath = join(dataDir, 'chat-flow-tree.json');
   let cached = null;
 
+  // Writers call readState() and may throw; readers use readStateSafe(), which never caches a failed read.
   function readState() {
     if (cached) return cached;
+    let raw;
     try {
-      cached = sanitizeState(JSON.parse(readFileSync(filePath, 'utf8')));
+      raw = readFileSync(filePath, 'utf8');
+    } catch (err) {
+      if (err?.code !== 'ENOENT') throw err;
+      cached = sanitizeState({});
+      return cached;
+    }
+    try {
+      cached = sanitizeState(JSON.parse(raw));
     } catch {
+      try { renameSync(filePath, `${filePath}.corrupt-${Date.now()}`); } catch {}
       cached = sanitizeState({});
     }
     return cached;
+  }
+
+  function readStateSafe() {
+    try { return readState(); } catch { return sanitizeState({}); }
   }
 
   function writeState(next) {
@@ -330,7 +339,7 @@ export function createChatTreeStore(dataDir, { appDir = '', proto = null } = {})
 
   return {
     get() {
-      const state = readState();
+      const state = readStateSafe();
       return {
         projectOverrides: { ...state.projectOverrides },
         foldedAsides: [...state.foldedAsides],
@@ -338,8 +347,12 @@ export function createChatTreeStore(dataDir, { appDir = '', proto = null } = {})
         btwMeta: readBtwMetadata(appDir, state.detachedAsides, proto)
       };
     },
+    projectOverride(conversationId) {
+      const overrides = readStateSafe().projectOverrides;
+      return Object.hasOwn(overrides, conversationId) ? overrides[conversationId] : '';
+    },
     btwMeta() {
-      const state = readState();
+      const state = readStateSafe();
       return { btwMeta: readBtwMetadata(appDir, state.detachedAsides, proto) };
     },
     moveProject(conversationId, rawProjectId) {

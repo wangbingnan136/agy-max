@@ -1,7 +1,7 @@
 {
   "name": "agy-max",
   "displayName": "Antigravity Max",
-  "version": "1.4.1",
+  "version": "1.4.2",
   "description": "All-in-one flagship workbench for Antigravity 2.0: built-in agy-fast accelerator, multilingual UI, Codex-style search/Git/goals workflow, Prism optics, context telemetry, multi-account switcher, and no-TUN proxy.",
   "logo": "assets/logo.svg",
   "suggestedPrompts": [

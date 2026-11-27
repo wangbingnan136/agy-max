@@ -1233,3 +1233,26 @@ test('MutationObserver isolates subtree:false attributes on body/documentElement
   // trackedTextNodes uses WeakMap (no strong retention of detached text nodes)
   assert.match(opticsSource, /trackedTextNodes\s*=\s*new WeakMap\(\)/);
 });
+
+test('composerRestyle styles send/cancel buttons without overriding native voice-start or dictation controls', () => {
+  for (const dark of [true, false]) {
+    const m = createMockEnv({ dark });
+    const optics = m.context.__agyCreateOptics({
+      options: () => ({
+        enabled: true,
+        composerRestyle: true,
+        themePalette: 'native'
+      })
+    });
+
+    assert.equal(m.document.documentElement.getAttribute('data-agy-composer-restyle'), '1');
+    const styleEl = m.document.head.children.find(el => el.tagName === 'STYLE');
+    assert.ok(styleEl, 'Expected injected optics style element');
+    const css = styleEl.textContent;
+    assert.ok(css.includes('[data-testid="send-button"]'));
+    assert.ok(css.includes('[data-testid="input-cancel-button"]'));
+    assert.equal(css.includes('voice-start-button'), false, 'Must not override native voice-start-button styles');
+    assert.equal(css.includes('input-send-button-record-tooltip'), false, 'Must not force transparent background on dictation button');
+    optics.dispose();
+  }
+});

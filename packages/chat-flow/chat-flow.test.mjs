@@ -393,9 +393,13 @@ test('sidebar /btw child conversation tree nests under parent, preserves active 
       if (sel === '[data-agy-project-drop-target="1"]') {
         return [...projHeaders, ...rowWrappers.values()].filter(el => el.getAttribute?.('data-agy-project-drop-target') === '1');
       }
+      if (sel === '.surface-composer-card') {
+        return composerCards;
+      }
       return [];
     }
   };
+  const composerCards = [];
 
   const fakeWin = {
     innerWidth: 1280,
@@ -636,6 +640,64 @@ test('sidebar /btw child conversation tree nests under parent, preserves active 
   await new Promise(r => setImmediate(r));
   assert.ok(dispatched.some(a => a.type === 'sidePanelV2/closeTabs' && a.payload.tabIds.includes('side_question__btw-new')));
   assert.equal(activePath, '/c/btw-new');
+
+  // 7. Dragging any sidebar conversation (including /btw child rows, even with moveEnabled=false) into a composer card
+  //    highlights the card, shows reference pill, attaches reference, suppresses click navigation, and supports HTML5 drop
+  const attachedConvos = [];
+  adapter.attachConversationToComposer = async (info, card) => {
+    attachedConvos.push({ ...info, card });
+    return { ok: true, mode: 'mention' };
+  };
+  const composerCard = fakeDoc.createElement('div');
+  composerCard.getBoundingClientRect = () => ({ left: 360, right: 920, top: 580, bottom: 720, width: 560, height: 140 });
+  composerCards.push(composerCard);
+
+  chatTree.sync({ enabled: true, moveEnabled: false, btwEnabled: true });
+  activePath = '/c/main-1';
+  listeners.get('pointerdown')({ button: 0, clientX: 40, clientY: 120, target: rowWrappers.get('btw-2') });
+  listeners.get('pointermove')({ buttons: 1, clientX: 520, clientY: 640 });
+  assert.equal(composerCard.getAttribute('data-agy-convo-drop-target'), '1');
+  assert.equal(appendedBodyNodes.length, 1);
+  assert.match(appendedBodyNodes[0].querySelector('[data-agy-pill-text="1"]').textContent, /^松手引用「/);
+  listeners.get('pointerup')({});
+  await new Promise(r => setImmediate(r));
+  assert.equal(composerCard.getAttribute('data-agy-convo-drop-target'), null);
+  assert.equal(attachedConvos.length, 1);
+  assert.equal(attachedConvos[0].id, 'btw-2');
+
+  // Trailing click right after composer drop is swallowed and must not activate btw-2 pane
+  let clickStopped = false;
+  listeners.get('click')({
+    target: rowWrappers.get('btw-2'),
+    preventDefault() {},
+    stopPropagation() { clickStopped = true; },
+    stopImmediatePropagation() { clickStopped = true; }
+  });
+  assert.equal(clickStopped, true);
+  assert.notEqual(reduxState.conversation?.convoState?.cascadeId, 'btw-2');
+
+  // HTML5 draggable="true" row (chatModeBeta) is not blocked on dragstart and drops cleanly via text/agy-conversation-id
+  rowWrappers.get('loose-1').setAttribute('draggable', 'true');
+  let html5Prevented = false;
+  listeners.get('dragstart')({ target: rowWrappers.get('loose-1'), preventDefault() { html5Prevented = true; } });
+  assert.equal(html5Prevented, false);
+  const dt = {
+    types: ['text/agy-conversation-id'],
+    dropEffect: 'none',
+    getData: k => (k === 'text/agy-conversation-id' ? 'loose-1' : '')
+  };
+  listeners.get('dragover')({ clientX: 500, clientY: 640, dataTransfer: dt, preventDefault() {} });
+  assert.equal(composerCard.getAttribute('data-agy-convo-drop-target'), '1');
+  listeners.get('drop')({ clientX: 500, clientY: 640, dataTransfer: dt, preventDefault() {}, stopPropagation() {} });
+  await new Promise(r => setImmediate(r));
+  assert.equal(composerCard.getAttribute('data-agy-convo-drop-target'), null);
+  assert.equal(attachedConvos.length, 2);
+  assert.equal(attachedConvos[1].id, 'loose-1');
+
+  // Disabling chat-flow unmounts listeners cleanly
+  chatTree.sync({ enabled: false, moveEnabled: false, btwEnabled: false });
+  assert.equal(listeners.has('pointerdown'), false);
+  assert.equal(listeners.has('drop'), false);
 
   chatTree.dispose();
   adapter.dispose();

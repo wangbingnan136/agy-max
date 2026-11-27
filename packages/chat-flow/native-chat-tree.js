@@ -7,6 +7,7 @@
     let disposed = false;
     let enabledMove = false;
     let enabledBtw = false;
+    let enabledConvoDrop = false;
     let hydrated = false;
     let loading = false;
     let projectOverrides = {};
@@ -23,7 +24,9 @@
     let titleRefreshTimers = new Set();
     let styleEl = null;
     let dragPillEl = null;
+    let highlightedComposerCard = null;
     let dragState = null;
+    let suppressClickUntil = 0;
     let suppressOwnEscape = false;
     let inStoreSync = false;
 
@@ -135,13 +138,19 @@
           transform: rotate(-90deg);
         }
 
-        /* Sidebar Cross-Project Drag Highlight & Cursor Pill */
+        /* Sidebar Cross-Project & Composer Reference Drag Highlight & Cursor Pill */
         [data-agy-project-drop-target="1"] {
           box-shadow: inset 0 0 0 1.5px var(--primary) !important;
           background: color-mix(in srgb, var(--primary) 12%, var(--sidebar, transparent)) !important;
           color: var(--foreground) !important;
           border-radius: 8px !important;
           transition: background 90ms ease, box-shadow 90ms ease;
+        }
+        .surface-composer-card[data-agy-convo-drop-target="1"],
+        [data-testid="agent-input-box"][data-agy-convo-drop-target="1"] {
+          border-color: var(--primary, #3b82f6) !important;
+          box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary, #3b82f6) 36%, transparent), 0 10px 28px -8px color-mix(in srgb, var(--primary, #3b82f6) 24%, transparent) !important;
+          transition: border-color 90ms ease, box-shadow 90ms ease !important;
         }
         .agy-drag-move-pill {
           position: fixed;
@@ -150,7 +159,7 @@
           display: inline-flex;
           align-items: center;
           gap: 6px;
-          max-width: 240px;
+          max-width: 260px;
           padding: 5px 10px;
           border-radius: 999px;
           background: var(--popover, var(--card));
@@ -557,7 +566,19 @@
       dragPillEl.style.top = `${Math.round(top)}px`;
     }
 
+    function setComposerDropHighlight(card) {
+      if (highlightedComposerCard === card) return;
+      if (highlightedComposerCard) {
+        highlightedComposerCard.removeAttribute?.('data-agy-convo-drop-target');
+      }
+      highlightedComposerCard = card || null;
+      if (highlightedComposerCard) {
+        highlightedComposerCard.setAttribute?.('data-agy-convo-drop-target', '1');
+      }
+    }
+
     function clearDropHighlight() {
+      setComposerDropHighlight(null);
       if (doc) {
         for (const el of doc.querySelectorAll('[data-agy-project-drop-target="1"]')) {
           el.removeAttribute('data-agy-project-drop-target');
@@ -652,10 +673,82 @@
       return null;
     }
 
+    function extractSidebarConversation(target) {
+      if (!target?.closest) return null;
+      if (target.closest('input, select, textarea, [role="menuitem"], [role="menu"], .agy-row-actions, [data-agy-btw-fold-btn], [data-agy-chat-assign]')) return null;
+      const btn = target.closest('button');
+      if (btn && !btn.matches?.('[data-testid="conversation-row-sidebar"], .agy-sidebar-row, [data-sidebar-row-id]')) return null;
+      const row = target.closest('[data-sidebar-row-id]')
+        || target.closest('[data-testid="conversation-row-sidebar"], .agy-sidebar-row')
+        || target.closest('a[href^="/c/"]');
+      if (!row) return null;
+      if (row.closest?.('.surface-composer-card, [data-testid="conversation-view"], [data-agy-management-page]')) return null;
+      const rowWithId = row.matches?.('[data-sidebar-row-id]') ? row : row.closest?.('[data-sidebar-row-id]');
+      let id = rowWithId?.getAttribute?.('data-sidebar-row-id') || '';
+      if (!id) {
+        const link = row.matches?.('a[href^="/c/"]') ? row : row.querySelector?.('a[href^="/c/"]');
+        const href = link?.getAttribute?.('href') || '';
+        const m = href.match(/^\/c\/([^/?#]+)/);
+        if (m) id = decodeURIComponent(m[1]);
+      }
+      if (!id) {
+        id = row.getAttribute?.('data-conversation-id') || row.dataset?.conversationId || row.getAttribute?.('data-id') || '';
+      }
+      id = String(id || '').trim();
+      if (!id) return null;
+      const dirTitle = env.adapter?.conversationDirectory?.()?.byId?.[id]?.title
+        || env.adapter?.store?.()?.getState?.()?.trajectorySummaries?.summaries?.[id]?.annotations?.title
+        || env.adapter?.store?.()?.getState?.()?.trajectorySummaries?.summaries?.[id]?.summary
+        || '';
+      const titleNode = row.querySelector?.('[data-testid="conversation-title"], span.truncate') || row.querySelector?.('a[href^="/c/"]');
+      const domTitle = String(titleNode?.textContent || row.textContent || '').trim();
+      const title = String(dirTitle || domTitle || id.slice(0, 8)).trim();
+      return { id, title, row, rowWrap: rowWithId || row };
+    }
+
+    function findComposerCardAt(x, y) {
+      if (!doc) return null;
+      let candidates = [...(doc.querySelectorAll?.('.surface-composer-card') || [])];
+      if (!candidates.length) candidates = [...(doc.querySelectorAll?.('[data-testid="agent-input-box"]') || [])];
+      let best = null;
+      let bestArea = Infinity;
+      for (const card of candidates) {
+        const rect = card.getBoundingClientRect?.();
+        if (!rect || rect.width <= 0 || rect.height <= 0) continue;
+        if (x < rect.left - 12 || x > rect.right + 12 || y < rect.top - 12 || y > rect.bottom + 12) continue;
+        const area = rect.width * rect.height;
+        if (area < bestArea) {
+          best = card;
+          bestArea = area;
+        }
+      }
+      return best;
+    }
+
+    function attachDroppedConversation(id, title, card) {
+      void Promise.resolve(env.adapter?.attachConversationToComposer?.({ id, title }, card)).catch(err => {
+        env.notify?.({
+          title: ui('引用对话失败', 'Failed to reference conversation'),
+          message: err?.message || '',
+          tag: 'agy-convo-drop-err'
+        });
+      });
+    }
+
     function updateDragAtPointer(x, y) {
       if (!dragState || !dragState.active) return;
       clearDropHighlight();
-      const target = resolveDropTargetByGeometry(x, y, dragState);
+      const composerCard = dragState.canDropComposer ? findComposerCardAt(x, y) : null;
+      if (composerCard) {
+        dragState.targetComposerCard = composerCard;
+        dragState.targetProjectId = null;
+        dragState.targetLabel = '';
+        setComposerDropHighlight(composerCard);
+        showDragPill(x, y, ui(`松手引用「${dragState.title}」`, `Drop to reference "${dragState.title}"`));
+        return;
+      }
+      dragState.targetComposerCard = null;
+      const target = dragState.canMove ? resolveDropTargetByGeometry(x, y, dragState) : null;
       dragState.targetProjectId = target ? target.projectId : null;
       dragState.targetLabel = target ? target.label : '';
       if (target) {
@@ -735,7 +828,11 @@
       dragState = null;
       stopAutoScroll();
       clearDropHighlight();
-      if (finished.active && finished.targetProjectId) {
+      if (finished.active && finished.targetComposerCard) {
+        abortNativeSidebarDrag();
+        suppressClickUntil = Date.now() + 280;
+        attachDroppedConversation(finished.cascadeId, finished.title, finished.targetComposerCard);
+      } else if (finished.active && finished.targetProjectId) {
         abortNativeSidebarDrag();
         void moveConversation(finished.cascadeId, finished.targetProjectId);
       } else if (forceAbortNative && (finished.active || hasOrphanedDragShield())) {
@@ -748,19 +845,23 @@
       if (!dragState && hasOrphanedDragShield()) {
         abortNativeSidebarDrag();
       }
-      if (!enabledMove || e.button !== 0) return;
-      if (e.target?.closest?.('button, input, select, textarea, [role="menuitem"], [role="menu"], .agy-row-actions')) return;
-      const rowWrap = e.target?.closest?.('[data-sidebar-row-id]')
-        || e.target?.closest?.('[data-testid="conversation-row-sidebar"]')?.closest?.('[data-sidebar-row-id]');
-      if (!rowWrap) return;
-      const cid = rowWrap.getAttribute?.('data-sidebar-row-id') || '';
-      if (!cid || !env.adapter?.isMovableConversation?.(cid)) return;
+      if ((!enabledMove && !enabledConvoDrop) || e.button !== 0) return;
+      const info = extractSidebarConversation(e.target);
+      if (!info) return;
+      const cid = info.id;
+      const canMove = enabledMove && Boolean(env.adapter?.isMovableConversation?.(cid));
+      const canDropComposer = enabledConvoDrop;
+      if (!canMove && !canDropComposer) return;
       const sourceProjectId = env.adapter?.conversationProjectId?.(cid) || OUTSIDE;
-      const scrollEl = rowWrap.closest?.('[data-sidebar-scroll-container]')
+      const scrollEl = info.rowWrap?.closest?.('[data-sidebar-scroll-container]')
         || doc?.querySelector?.('[data-testid="conversation-list-sidebar"]')
         || null;
       dragState = {
         cascadeId: cid,
+        title: info.title,
+        canMove,
+        canDropComposer,
+        isHtml5Draggable: info.row?.getAttribute?.('draggable') === 'true',
         sourceProjectId,
         scrollEl,
         startX: e.clientX,
@@ -769,7 +870,8 @@
         lastY: e.clientY,
         active: false,
         targetProjectId: null,
-        targetLabel: ''
+        targetLabel: '',
+        targetComposerCard: null
       };
     }
 
@@ -788,7 +890,9 @@
         dragState.active = true;
       }
       updateDragAtPointer(e.clientX, e.clientY);
-      if (!autoScrollRaf && dragState.scrollEl) stepAutoScroll();
+      if (!autoScrollRaf && dragState.canMove && !dragState.targetComposerCard && dragState.scrollEl) {
+        stepAutoScroll();
+      }
     }
 
     function onPointerUp() {
@@ -804,10 +908,47 @@
     }
 
     function onDragStart(e) {
-      if (disposed || !enabledMove) return;
+      if (disposed || (!enabledMove && !enabledConvoDrop)) return;
+      const draggableRow = e.target?.closest?.('[data-testid="conversation-row-sidebar"], .agy-sidebar-row, [data-sidebar-row-id]');
+      if (draggableRow?.getAttribute?.('draggable') === 'true' || dragState?.isHtml5Draggable) {
+        cancelActiveDrag(false);
+        return;
+      }
       if (dragState || e.target?.closest?.('[data-sidebar-row-id]')) {
         e.preventDefault?.();
       }
+    }
+
+    function hasConvoDragType(e) {
+      const types = e?.dataTransfer?.types;
+      return Boolean(types && [...types].includes('text/agy-conversation-id'));
+    }
+
+    function onComposerDragOver(e) {
+      if (disposed || !enabledConvoDrop || !hasConvoDragType(e)) return;
+      const card = findComposerCardAt(e.clientX, e.clientY);
+      if (card) {
+        e.preventDefault?.();
+        if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+        setComposerDropHighlight(card);
+      } else {
+        setComposerDropHighlight(null);
+      }
+    }
+
+    function onComposerDrop(e) {
+      if (disposed || !enabledConvoDrop || !hasConvoDragType(e)) return;
+      const card = findComposerCardAt(e.clientX, e.clientY);
+      clearDropHighlight();
+      if (!card) return;
+      e.preventDefault?.();
+      e.stopPropagation?.();
+      const cid = String(e.dataTransfer?.getData?.('text/agy-conversation-id') || '').trim();
+      if (!cid) return;
+      const dirTitle = env.adapter?.conversationDirectory?.()?.byId?.[cid]?.title
+        || env.adapter?.store?.()?.getState?.()?.trajectorySummaries?.summaries?.[cid]?.annotations?.title
+        || cid.slice(0, 8);
+      attachDroppedConversation(cid, dirTitle, card);
     }
 
     function onWindowBlur() {
@@ -826,6 +967,12 @@
     }
 
     function onSidebarClick(e) {
+      if (Date.now() < suppressClickUntil) {
+        e.preventDefault?.();
+        e.stopPropagation?.();
+        e.stopImmediatePropagation?.();
+        return;
+      }
       if (disposed || !enabledBtw) return;
       const rowWrap = e.target?.closest?.('[data-sidebar-row-id][data-agy-btw-child="1"]');
       if (!rowWrap || e.target?.closest?.('.agy-row-actions, [role="menu"]')) return;
@@ -855,6 +1002,8 @@
       target.addEventListener('keydown', onKeyDown, true);
       doc.addEventListener('visibilitychange', onVisibilityChange);
       doc.addEventListener('click', onSidebarClick, true);
+      doc.addEventListener('dragover', onComposerDragOver, true);
+      doc.addEventListener('drop', onComposerDrop, true);
       if (typeof MutationObserver === 'function' && doc.body) {
         observer = new MutationObserver(() => scheduleDecorate());
         observer.observe(doc.body, { childList: true, subtree: true });
@@ -877,6 +1026,8 @@
       target.removeEventListener('keydown', onKeyDown, true);
       doc.removeEventListener('visibilitychange', onVisibilityChange);
       doc.removeEventListener('click', onSidebarClick, true);
+      doc.removeEventListener('dragover', onComposerDragOver, true);
+      doc.removeEventListener('drop', onComposerDrop, true);
       observer?.disconnect?.();
       observer = null;
       stopAutoScroll();
@@ -926,21 +1077,30 @@
       return result;
     }
 
-    function sync({ moveEnabled = false, btwEnabled = false } = {}) {
+    function sync({ enabled, moveEnabled = false, btwEnabled = false, composerDropEnabled } = {}) {
       if (disposed) return;
       enabledMove = Boolean(moveEnabled);
       enabledBtw = Boolean(btwEnabled);
+      enabledConvoDrop = composerDropEnabled !== undefined
+        ? Boolean(composerDropEnabled)
+        : (enabled !== undefined ? Boolean(enabled) : Boolean(enabledMove || enabledBtw));
       env.adapter?.setBtwSubtree?.(enabledBtw);
-      if (enabledMove || enabledBtw) {
+      if (enabledMove || enabledBtw || enabledConvoDrop) {
         ensureStyle();
         installDomListeners();
-        ensureStoreSubscription();
-        void hydrate();
-        pushAdapterState();
-        handleStoreChange();
+        if (enabledMove || enabledBtw) {
+          ensureStoreSubscription();
+          void hydrate();
+          pushAdapterState();
+          handleStoreChange();
+        } else {
+          decorateSidebarRows();
+        }
       } else {
+        cancelActiveDrag(false);
         decorateSidebarRows();
         clearDropHighlight();
+        removeDomListeners();
       }
     }
 

@@ -115,8 +115,8 @@ test('fail-closed: errors deny inside SSH projects and allow elsewhere', async (
     assert.deepEqual(probeSshMarker({ cwd: corrupt }), { projectId: '' });
     assert.equal(failClosedResult('PreToolUse', { cwd: corrupt }, boom).decision, 'deny');
 
-    // unparseable payload asks; well-formed payloads go through the real evaluator
-    assert.equal((await runHook('{oops', 'PreToolUse')).decision, 'ask');
+    // unparseable payload is denied (ask == allow under auto-approve); well-formed payloads go through the real evaluator
+    assert.equal((await runHook('{oops', 'PreToolUse')).decision, 'deny');
     assert.deepEqual(await runHook('{oops', 'SessionStart'), {});
     const denied = await runHook(JSON.stringify({ cwd: f.proj.proxyWorkspaceDir, toolCall: { name: 'run_command', args: { CommandLine: 'ls' } } }), 'PreToolUse');
     assert.equal(denied.decision, 'deny');

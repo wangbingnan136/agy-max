@@ -7,6 +7,7 @@ import {
   DEFAULT_MODULE_IDS,
   MODULE_BY_ID,
   MODULE_CATALOG,
+  coreRangeSatisfied,
   detectLegacyUsedOptionalModules,
   isKnownModuleId
 } from './catalog.mjs';
@@ -47,6 +48,26 @@ function readJsonSafe(filePath, fallback = null) {
   } catch {
     return fallback;
   }
+}
+
+const RETRYABLE_RENAME_CODES = new Set(['EPERM', 'EBUSY', 'EACCES']);
+
+// Windows AV/indexers briefly lock files; retry the rename a few times before giving up.
+function renameWithRetry(from, to, attempts = 5) {
+  for (let i = 0; ; i++) {
+    try {
+      renameSync(from, to);
+      return;
+    } catch (err) {
+      if (i >= attempts - 1 || !RETRYABLE_RENAME_CODES.has(err?.code)) throw err;
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 50 * (i + 1));
+    }
+  }
+}
+
+function bundleManifest(bundle) {
+  const file = bundle?.files?.find(f => f.path === 'module.json');
+  try { return file ? JSON.parse(Buffer.from(file.data, 'base64').toString('utf8')) : {}; } catch { return {}; }
 }
 
 function assertSafeChild(root, target) {
@@ -111,8 +132,20 @@ async function downloadVerifiedBundle(id, version, githubUrl, fetcher) {
   }
   const MAX_MODULE_BYTES = 16 * 1024 * 1024;
   if (Number(bundleRes.headers?.get?.('content-length') || 0) > MAX_MODULE_BYTES) throw new Error('模块下载包过大');
-  const buf = Buffer.from(await bundleRes.arrayBuffer());
-  if (buf.length > MAX_MODULE_BYTES) throw new Error('模块下载包过大');
+  let buf;
+  if (bundleRes.body && typeof bundleRes.body[Symbol.asyncIterator] === 'function') {
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of bundleRes.body) {
+      size += chunk.length;
+      if (size > MAX_MODULE_BYTES) throw new Error('模块下载包过大');
+      chunks.push(Buffer.from(chunk));
+    }
+    buf = Buffer.concat(chunks);
+  } else {
+    buf = Buffer.from(await bundleRes.arrayBuffer());
+    if (buf.length > MAX_MODULE_BYTES) throw new Error('模块下载包过大');
+  }
   if (sha256Hex(buf) !== expectedSha) throw new Error('模块下载包 SHA-256 校验失败');
   return decodeModuleBundle(buf, { expectedId: id, expectedVersion: version });
 }
@@ -168,7 +201,7 @@ export function createModuleRegistry({
   dataDir = join(resolve(home), '.gemini', 'antigravity', 'plugin_data', 'agy-max'),
   settingsStore = null,
   defaultSettings = {},
-  version = '1.4.2',
+  version = '1.4.3',
   githubUrl = '',
   fetcher = globalThis.fetch,
   syncIntegrations = false,
@@ -217,8 +250,17 @@ export function createModuleRegistry({
       if (sourceSeedSha) {
         writeAtomicJson(join(stageDir, '.agy-module-receipt.json'), { ...receipt, seedSha256: sourceSeedSha });
       }
-      rmSync(targetDir, { recursive: true, force: true });
-      renameSync(stageDir, targetDir);
+      // Swap via a backup so a failed rename (locked file on Windows) can put the old module back.
+      const backupDir = assertSafeChild(modulesRoot, join(modulesRoot, `.backup-${id}-${randomUUID().slice(0, 8)}`));
+      const hadOld = Boolean(lstatSync(targetDir, { throwIfNoEntry: false }));
+      if (hadOld) renameWithRetry(targetDir, backupDir);
+      try {
+        renameWithRetry(stageDir, targetDir);
+      } catch (err) {
+        if (hadOld) { try { renameWithRetry(backupDir, targetDir); } catch {} }
+        throw err;
+      }
+      if (hadOld) { try { rmSync(backupDir, { recursive: true, force: true }); } catch {} }
       return receipt;
     } finally {
       if (existsSync(stageDir)) rmSync(stageDir, { recursive: true, force: true });
@@ -240,16 +282,26 @@ export function createModuleRegistry({
     }
   }
 
-  function readManifest() {
-    const raw = readJsonSafe(manifestPath, null);
-    if (!raw || raw.format !== 1 || !Array.isArray(raw.installed)) return null;
-    return {
+  // { manifest } when valid, { missing: true } only on ENOENT, { error } when it exists but cannot be read or parsed.
+  function readManifestFile() {
+    let raw;
+    try {
+      raw = JSON.parse(readFileSync(manifestPath, 'utf8').replace(/^\uFEFF/, ''));
+    } catch (err) {
+      return err?.code === 'ENOENT' ? { missing: true } : { error: err };
+    }
+    if (!raw || raw.format !== 1 || !Array.isArray(raw.installed)) return { error: new Error('模块清单格式无效') };
+    return { manifest: {
       format: 1,
       initializedVersion: String(raw.initializedVersion || version),
       migratedFromLegacy: Boolean(raw.migratedFromLegacy),
       installed: [...new Set(raw.installed.filter(isKnownModuleId))],
       explicitlyUninstalled: [...new Set((Array.isArray(raw.explicitlyUninstalled) ? raw.explicitlyUninstalled : []).filter(isKnownModuleId))]
-    };
+    } };
+  }
+
+  function readManifest() {
+    return readManifestFile().manifest || null;
   }
 
   function saveManifest(next) {
@@ -278,14 +330,28 @@ export function createModuleRegistry({
 
   function ensureInitialized() {
     if (initializingManifest) return initializingManifest;
-    let manifest = readManifest();
-    if (!manifest) {
+    const read = readManifestFile();
+    let manifest = read.manifest || null;
+    if (read.error) {
+      // The manifest exists but is unreadable (AV lock, partial write): keep what is on disk instead of
+      // re-running first install, which would bring back modules the user uninstalled. Nothing is saved here.
+      const installed = ALL_MODULE_IDS.filter(id => existsSync(join(modulesRoot, id, 'module.json')));
+      manifest = {
+        format: 1,
+        initializedVersion: version,
+        migratedFromLegacy: false,
+        installed,
+        explicitlyUninstalled: ALL_MODULE_IDS.filter(id => !installed.includes(id)),
+        readError: String(read.error?.message || read.error)
+      };
+    } else if (!manifest) {
       // Upgraders from v1.4.x keep the optional modules they were using; fresh installs get the defaults only.
       const settingsPath = join(resolvedDataDir, 'settings.json');
       const legacyExtra = existsSync(settingsPath)
         ? detectLegacyUsedOptionalModules(readJsonSafe(settingsPath, {}), {
           hasSavedAccounts: hasNonEmptyArrayInJson(join(resolvedDataDir, 'accounts.json'), 'accounts'),
-          hasSavedSsh: hasSavedSshProjects()
+          hasSavedSsh: hasSavedSshProjects(),
+          defaults: defaultSettings
         })
         : [];
       const initialInstalled = [...new Set([...DEFAULT_MODULE_IDS, ...legacyExtra])];
@@ -339,10 +405,12 @@ export function createModuleRegistry({
     if (!meta) return null;
     const devDir = resolveDevLocalDir(id);
     if (devDir) {
+      const error = coreRangeError(devDir);
       return {
         ...meta,
         installed: true,
-        active: true,
+        active: !error,
+        error,
         source: 'dev-local',
         dir: devDir,
         bytes: directoryByteSize(devDir),
@@ -352,10 +420,12 @@ export function createModuleRegistry({
     const storeDir = join(modulesRoot, id);
     const inManifest = manifest.installed.includes(id) && existsSync(join(storeDir, 'module.json'));
     const receipt = inManifest ? readJsonSafe(join(storeDir, '.agy-module-receipt.json'), null) : null;
+    const error = inManifest ? coreRangeError(storeDir) : '';
     return {
       ...meta,
       installed: inManifest,
-      active: inManifest,
+      active: inManifest && !error,
+      error,
       source: inManifest ? 'store' : 'none',
       dir: inManifest ? storeDir : '',
       installedVersion: receipt?.version || (inManifest ? version : ''),
@@ -364,10 +434,26 @@ export function createModuleRegistry({
     };
   }
 
+  function coreRangeMessage(range) {
+    return `模块要求核心版本 ${range}，当前核心为 ${version}，请先更新 Antigravity Max`;
+  }
+
+  function coreRangeError(dir) {
+    const range = readJsonSafe(join(dir, 'module.json'), {})?.coreRange;
+    return coreRangeSatisfied(range, version) ? '' : coreRangeMessage(range);
+  }
+
+  function assertBundleCompatible(bundle) {
+    const range = bundleManifest(bundle).coreRange;
+    if (!coreRangeSatisfied(range, version)) throw new Error(coreRangeMessage(range));
+    return bundle;
+  }
+
   function hasSavedModuleData(id) {
     const modDataDir = join(moduleDataRoot, id);
     if (existsSync(join(modDataDir, 'settings.snapshot.json'))) return true;
     if (id === 'accounts' && hasNonEmptyArrayInJson(join(resolvedDataDir, 'accounts.json'), 'accounts')) return true;
+    if (id === 'chat-flow' && hasNonEmptyArrayInJson(join(resolvedDataDir, 'ai-providers.json'), 'providers')) return true;
     if (id === 'ssh-remote' && hasSavedSshProjects()) return true;
     return false;
   }
@@ -394,7 +480,8 @@ export function createModuleRegistry({
         localPath: st.source === 'dev-local' ? st.dir : '',
         installedVersion: st.installedVersion || '',
         bytes: st.bytes,
-        hasSavedData: st.hasSavedData
+        hasSavedData: st.hasSavedData,
+        error: st.error || ''
       };
     });
   }
@@ -426,13 +513,16 @@ export function createModuleRegistry({
     if (!preferSeed && githubUrl) {
       try {
         bundle = await downloadVerifiedBundle(id, version, githubUrl, fetcher);
-        if (bundle) delivery = 'online';
+        if (bundle) {
+          assertBundleCompatible(bundle);
+          delivery = 'online';
+        }
       } catch {
         bundle = null;
       }
     }
     if (!bundle) {
-      bundle = loadBundleFromSeedOrPackage(id);
+      bundle = assertBundleCompatible(loadBundleFromSeedOrPackage(id));
       delivery = 'seed';
     }
     const extractedReceipt = extractBundleAtomically(id, bundle, delivery === 'seed' ? seedDigest(id) : '');
@@ -465,22 +555,46 @@ export function createModuleRegistry({
   }
 
   // Saved account and SSH secrets live in the OS keychain, keyed by ids that only the files deleted on purge remember.
+  // Returns the ids whose secret could not be removed; their index file is then kept so the secrets are not orphaned.
+  const CREDENTIAL_INDEX_FILE = Object.freeze({ accounts: 'accounts.json', 'ssh-remote': 'ssh-projects', 'chat-flow': 'ai-providers.json' });
+
   async function purgeModuleCredentials(id) {
+    let ids = [];
+    let openVault;
+    let removeOne;
+    if (id === 'accounts') {
+      ids = (readJsonSafe(join(resolvedDataDir, 'accounts.json'), {})?.accounts || []).map(a => a?.id).filter(x => typeof x === 'string' && x);
+      openVault = async () => vaults?.accounts || (await import('../../lib/credential-vault.mjs')).createCredentialVault({ home: resolvedHome });
+      removeOne = (vault, accountId) => vault.removeSaved(accountId);
+    } else if (id === 'ssh-remote') {
+      const hosts = readJsonSafe(join(resolvedDataDir, 'ssh-projects', 'hosts.json'), {})?.hosts;
+      ids = hosts && typeof hosts === 'object' ? Object.keys(hosts) : [];
+      openVault = async () => vaults?.ssh || (await import('../../lib/ssh-vault.mjs')).createSshCredentialVault();
+      removeOne = (vault, hostId) => vault.removePassword(hostId);
+    } else if (id === 'chat-flow') {
+      ids = (readJsonSafe(join(resolvedDataDir, 'ai-providers.json'), {})?.providers || [])
+        .filter(p => p?.keyInVault && typeof p.id === 'string' && p.id)
+        .map(p => p.id);
+      openVault = async () => vaults?.secrets || vaults?.accounts || (await import('../../lib/credential-vault.mjs')).createCredentialVault({ home: resolvedHome });
+      removeOne = (vault, providerId) => vault.deleteSecret(`ai-provider:${providerId}`);
+    }
+    if (!ids.length) return [];
+    let vault;
     try {
-      if (id === 'accounts') {
-        const ids = (readJsonSafe(join(resolvedDataDir, 'accounts.json'), {})?.accounts || []).map(a => a?.id).filter(x => typeof x === 'string' && x);
-        if (!ids.length) return;
-        const vault = vaults?.accounts || (await import('../../lib/credential-vault.mjs')).createCredentialVault({ home: resolvedHome });
-        for (const accountId of ids) { try { vault.removeSaved(accountId); } catch {} }
+      vault = await openVault();
+    } catch (err) {
+      return ids.map(x => ({ id: x, error: String(err?.message || err) }));
+    }
+    const failures = [];
+    for (const x of ids) {
+      try {
+        const res = await removeOne(vault, x);
+        if (res?.ok !== true && res?.status !== 'missing') failures.push({ id: x, error: String(res?.error || '凭据删除失败') });
+      } catch (err) {
+        failures.push({ id: x, error: String(err?.message || err) });
       }
-      if (id === 'ssh-remote') {
-        const hosts = readJsonSafe(join(resolvedDataDir, 'ssh-projects', 'hosts.json'), {})?.hosts;
-        const ids = hosts && typeof hosts === 'object' ? Object.keys(hosts) : [];
-        if (!ids.length) return;
-        const vault = vaults?.ssh || (await import('../../lib/ssh-vault.mjs')).createSshCredentialVault();
-        for (const hostId of ids) { try { vault.removePassword(hostId); } catch {} }
-      }
-    } catch { /* Purging local files must not fail because the keychain is unavailable. */ }
+    }
+    return failures;
   }
 
   async function uninstallModule(id, { purgeData = false } = {}) {
@@ -505,8 +619,10 @@ export function createModuleRegistry({
     const storeDir = assertSafeChild(modulesRoot, join(modulesRoot, id));
     rmSync(storeDir, { recursive: true, force: true });
 
+    let credentialFailures = [];
     if (purgeData) {
-      await purgeModuleCredentials(id);
+      credentialFailures = await purgeModuleCredentials(id);
+      const keepFile = credentialFailures.length ? CREDENTIAL_INDEX_FILE[id] : '';
       rmSync(modDataDir, { recursive: true, force: true });
       if (settingsStore?.set && meta?.settingsKeys?.length) {
         const resetPatch = {};
@@ -515,11 +631,9 @@ export function createModuleRegistry({
         }
         if (Object.keys(resetPatch).length) settingsStore.set(resetPatch);
       }
-      if (id === 'accounts') {
-        rmSync(join(resolvedDataDir, 'accounts.json'), { force: true });
-      }
-      if (id === 'ssh-remote') {
-        rmSync(join(resolvedDataDir, 'ssh-projects'), { recursive: true, force: true });
+      for (const name of meta?.dataFiles || []) {
+        if (name === keepFile) continue;
+        rmSync(assertSafeChild(resolvedDataDir, join(resolvedDataDir, name)), { recursive: true, force: true });
       }
     }
 
@@ -529,7 +643,13 @@ export function createModuleRegistry({
     saveManifest(nextManifest);
     syncIntegrationsIfNeeded(nextManifest);
     if (typeof onModulesChanged === 'function') await onModulesChanged({ action: 'uninstall', id, purgeData: Boolean(purgeData), activeIds: activeIds() });
-    return { ok: true, id, purged: Boolean(purgeData), modules: listModules() };
+    return {
+      ok: true,
+      id,
+      purged: Boolean(purgeData),
+      ...(credentialFailures.length ? { credentialFailures } : {}),
+      modules: listModules()
+    };
   }
 
   return {

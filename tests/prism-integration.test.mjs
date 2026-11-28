@@ -147,6 +147,8 @@ test('Prism RPC scopes the diff and keeps unfinished or consent-sensitive capabi
       'sshCommandPaste', 'fileContextMenu', 'externalEditor',
       'thoughtTranslate', 'thoughtTrigger', 'thoughtView', 'thoughtStyle',
       'thoughtCustomPrompt', 'translateSessionTitles',
+      'betaThinkingTranslate', 'betaThinkingEngine', 'betaThinkingDisplay', 'betaThinkingTrigger',
+      'betaComposerPredict', 'betaAiModel', 'betaAiTranslateModel', 'betaAiPredictModel',
       'contextLimit', 'stageUpdates', 'efficientIO', 'pragmaticCoding'
     ]) {
       assert.equal(blocked in bundle.settings, false, `settings.export must omit ${blocked}`);

@@ -117,8 +117,37 @@ test('settings persist, merge safely, and reject unknown options without changin
     store.set({language:'en',contextLimit:1000000});assert.equal(store.get().contextLimit,1000000);assert.equal(store.get().language,'en');
     store.set({contextLimit:256000});assert.equal(store.get().contextLimit,256000);
     store.set({contextLimit:0});assert.equal(store.get().contextLimit,0);
+    assert.equal(store.get().pinOverview, false);
+    assert.equal(store.get().composerIndicatorTone, 'semantic');
+    assert.equal(store.get().composerIndicatorCompact, false);
+    assert.equal(store.get().composerQuota, false);
+    assert.equal(store.get().composerQuotaWindow, 'auto');
+    assert.equal(store.get().betaThinkingTranslate, false);
+    assert.equal(store.get().betaComposerPredict, false);
+    store.set({
+      pinOverview: true,
+      composerIndicatorTone: 'muted',
+      composerIndicatorCompact: true,
+      composerQuota: true,
+      composerQuotaWindow: 'weekly',
+      betaThinkingTranslate: true,
+      betaThinkingEngine: 'ai',
+      betaThinkingDisplay: 'bilingual',
+      betaThinkingTrigger: 'manual',
+      betaComposerPredict: true,
+      betaAiModel: ' prov_1::gpt-4o-mini ',
+      betaAiTranslateModel: 'prov_1::gemini-2.5-flash',
+      betaAiPredictModel: 'prov_1::claude-3-5-haiku'
+    });
+    assert.equal(store.get().pinOverview, true);
+    assert.equal(store.get().composerIndicatorTone, 'muted');
+    assert.equal(store.get().composerIndicatorCompact, true);
+    assert.equal(store.get().composerQuota, true);
+    assert.equal(store.get().composerQuotaWindow, 'weekly');
+    assert.equal(store.get().betaAiModel, 'prov_1::gpt-4o-mini');
+    store.set(DEFAULT_SETTINGS);
     const before = readFileSync(join(directory, 'settings.json'), 'utf8');
-    for (const value of [{ compact: 'false' }, { userBubbleTint: 'yes' }, { userBubblePreset: 'neon' }, { userBubbleColor: 'red' }, { userBubbleColor: '#123;color:red' }, { composerQuotaHalo: true }, { composerQuotaHaloWindow: 'auto' }, { unknown: true }, { toString: false }, {language:'invalid'}, {overviewRange:'custom'}, {overviewRange:'invalid'}, {accountViewMode:'grid'}, {accountQuotaWindow:'1h'}, {proxyUrl:'ftp://127.0.0.1:21'}, {proxyUrl:'http://127.0.0.1:7897;calc'}, {proxyBypass:'localhost"bad'}, {contextLimit:999999}, []]) assert.throws(() => store.set(value), /设置/);
+    for (const value of [{ compact: 'false' }, { userBubbleTint: 'yes' }, { userBubblePreset: 'neon' }, { userBubbleColor: 'red' }, { userBubbleColor: '#123;color:red' }, { composerIndicatorTone: 'rainbow' }, { composerQuotaWindow: '1d' }, { betaThinkingEngine: 'deepl' }, { betaAiModel: 'bad\nmodel' }, { composerQuotaHalo: true }, { composerQuotaHaloWindow: 'auto' }, { unknown: true }, { toString: false }, {language:'invalid'}, {overviewRange:'custom'}, {overviewRange:'invalid'}, {accountViewMode:'grid'}, {accountQuotaWindow:'1h'}, {proxyUrl:'ftp://127.0.0.1:21'}, {proxyUrl:'http://127.0.0.1:7897;calc'}, {proxyBypass:'localhost"bad'}, {contextLimit:999999}, []]) assert.throws(() => store.set(value), /设置/);
     assert.equal(readFileSync(join(directory, 'settings.json'), 'utf8'), before);
     store.set(DEFAULT_SETTINGS); assert.deepEqual(store.get(), DEFAULT_SETTINGS);
   } finally { rmSync(directory, { recursive: true, force: true }); }

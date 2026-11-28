@@ -320,8 +320,19 @@ export const SITE_CONTENT = {
       allReleasesLabel: '在 GitHub 查看全部版本',
       entries: [
         {
-          version: 'v1.4.2',
+          version: 'v1.4.3',
           tag: '最新',
+          title: '拖会话进输入框即可引用、语音按钮修复与一轮稳定性加固',
+          highlights: [
+            '把侧栏会话拖进输入框即可插入原生 @ 会话引用；开启「重塑输入框卡片」后语音按钮不再变形、录音高亮不再消失（感谢社区贡献者 @andrew05060414）。',
+            '修复关闭推理档位滑块后模型菜单变透明；一个模块的界面脚本出错不再拖垮整个界面。',
+            '模块替换先备份并在失败时还原，清单读不出时不再装回已卸载的模块，「同时清除」会删除模块数据文件，钥匙串删除失败时保留记录并提示。',
+            'SSH 中途断线不再重复执行命令，远端执行边界更严；非流式回复不再顶高 tok/s；汉化不再改写会话标题。'
+          ]
+        },
+        {
+          version: 'v1.4.2',
+          tag: '',
           title: '按需模块化、侧栏拖动移动会话、/btw 子对话树与「版本更新」页',
           highlights: [
             '拆成 1 个核心 + 8 个可热插拔模块：默认装 4 个常用模块，界面与光学、多账号、代理、SSH 远端工程在「Antigravity Max -> 模块」页按需安装（SHA-256 校验、断网用离线包、卸载可保留或清除数据）。从 v1.4.x 升级会保留你在用的模块。',
@@ -706,8 +717,19 @@ export const SITE_CONTENT = {
       allReleasesLabel: 'View all releases on GitHub',
       entries: [
         {
-          version: 'v1.4.2',
+          version: 'v1.4.3',
           tag: 'Latest',
+          title: 'Drag conversations into the composer, voice button fixes, and a round of hardening',
+          highlights: [
+            'Drop a sidebar conversation onto the composer to insert a native @ mention; with "Restyle composer card" on, voice buttons are no longer deformed and the recording highlight stays visible (thanks to community contributor @andrew05060414).',
+            'Fixed the model menu turning invisible after disabling the effort slider; one module\'s broken client script no longer takes down the whole UI.',
+            'Module replacement backs up and restores on failure, an unreadable manifest no longer reinstalls removed modules, "Also clear data" deletes module data files, and failed keychain deletions keep their records.',
+            'An SSH drop mid-command never runs it twice and the execution boundary is stricter; non-streamed replies no longer inflate tok/s; localization leaves conversation titles alone.'
+          ]
+        },
+        {
+          version: 'v1.4.2',
+          tag: '',
           title: 'Modular install, drag conversations between projects, nested /btw side chats, and an Updates tab',
           highlights: [
             'Split into 1 core + 8 hot-pluggable modules: 4 everyday modules by default, while Optics, Multi-Account, Proxy and SSH Projects install on demand from Antigravity Max -> Modules (SHA-256 verified, offline fallback, keep or purge data on uninstall). Upgrades from v1.4.x keep the modules you use.',

@@ -33,8 +33,13 @@ export function createHookBus() {
     if (!list || !list.length) return initialValue;
     let value = initialValue;
     for (const entry of [...list]) {
-      const next = entry.handler(value, context);
-      if (next !== undefined) value = next;
+      try {
+        const next = entry.handler(value, context);
+        if (next !== undefined) value = next;
+      } catch (error) {
+        // One module's hook failing must not break the pipeline for the others.
+        console.error(`[agy-max] module "${entry.moduleId}" hook ${slot} failed`, error);
+      }
     }
     return value;
   }
@@ -44,8 +49,13 @@ export function createHookBus() {
     if (!list || !list.length) return initialValue;
     let value = initialValue;
     for (const entry of [...list]) {
-      const next = await entry.handler(value, context);
-      if (next !== undefined) value = next;
+      try {
+        const next = await entry.handler(value, context);
+        if (next !== undefined) value = next;
+      } catch (error) {
+        // One module's hook failing must not break the pipeline for the others.
+        console.error(`[agy-max] module "${entry.moduleId}" hook ${slot} failed`, error);
+      }
     }
     return value;
   }

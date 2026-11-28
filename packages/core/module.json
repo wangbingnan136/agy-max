@@ -1,6 +1,6 @@
 {
   "id": "core",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "coreApiVersion": 1,
   "displayName": {
     "zh-CN": "Antigravity Max 微内核底座",

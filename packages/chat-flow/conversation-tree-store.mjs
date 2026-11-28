@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 let DatabaseSync;
@@ -196,26 +196,46 @@ function readSideQuestionDbStats(appDir, sqId, proto) {
   }
 }
 
+// Parsed annotations per directory, keyed by file name and reused while the file's mtime and size are unchanged.
+const annotationCache = new Map();
+
+function readAnnotations(annDir, files) {
+  let cache = annotationCache.get(annDir);
+  if (!cache) annotationCache.set(annDir, cache = new Map());
+  const seen = new Set();
+  const parsedById = new Map();
+  for (const file of files) {
+    if (!file.endsWith('.pbtxt')) continue;
+    const cid = file.slice(0, -6);
+    if (!VALID_ID_RE.test(cid)) continue;
+    seen.add(file);
+    try {
+      const path = join(annDir, file);
+      const st = statSync(path);
+      let entry = cache.get(file);
+      if (!entry || entry.mtimeMs !== st.mtimeMs || entry.size !== st.size) {
+        const text = readFileSync(path, 'utf8');
+        const relevant = text.includes('side_question_') || text.includes('title:');
+        entry = { mtimeMs: st.mtimeMs, size: st.size, parsed: relevant ? parseAnnotationPbtxt(text) : null };
+        cache.set(file, entry);
+      }
+      if (entry.parsed) parsedById.set(cid, entry.parsed);
+    } catch { cache.delete(file); }
+  }
+  for (const file of cache.keys()) if (!seen.has(file)) cache.delete(file);
+  return parsedById;
+}
+
 export function readBtwMetadata(appDir, detachedIds = [], proto = null) {
   const btwMeta = {};
   if (!appDir) return btwMeta;
   const annDir = join(appDir, 'annotations');
   if (!existsSync(annDir)) return btwMeta;
   const detached = new Set(Array.isArray(detachedIds) ? detachedIds : []);
-  const parsedById = new Map();
 
   let files = [];
   try { files = readdirSync(annDir); } catch { return btwMeta; }
-  for (const file of files) {
-    if (!file.endsWith('.pbtxt')) continue;
-    const cid = file.slice(0, -6);
-    if (!VALID_ID_RE.test(cid)) continue;
-    try {
-      const text = readFileSync(join(annDir, file), 'utf8');
-      if (!text.includes('side_question_') && !text.includes('title:')) continue;
-      parsedById.set(cid, parseAnnotationPbtxt(text));
-    } catch {}
-  }
+  const parsedById = readAnnotations(annDir, files);
 
   for (const [parentId, parsed] of parsedById.entries()) {
     if (!parsed.sideQuestionIds.length) continue;
@@ -323,17 +343,19 @@ export function createChatTreeStore(dataDir, { appDir = '', proto = null } = {})
     try { return readState(); } catch { return sanitizeState({}); }
   }
 
+  // Commit to the in-memory cache only after the file is written, so a failed save never leaks into the next one.
   function writeState(next) {
-    cached = sanitizeState(next);
+    const clean = sanitizeState(next);
     mkdirSync(dirname(filePath), { recursive: true });
     const tmp = `${filePath}.${process.pid}.${Date.now()}.tmp`;
     try {
-      writeFileSync(tmp, JSON.stringify(cached, null, 2) + '\n', { mode: 0o600 });
+      writeFileSync(tmp, JSON.stringify(clean, null, 2) + '\n', { mode: 0o600 });
       renameSync(tmp, filePath);
     } catch (err) {
       try { unlinkSync(tmp); } catch {}
       throw err;
     }
+    cached = clean;
     return cached;
   }
 

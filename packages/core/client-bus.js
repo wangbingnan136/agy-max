@@ -52,8 +52,12 @@
     let value = initialValue;
     for (const entry of list) {
       if (!activeSet.has(entry.moduleId)) continue;
-      const next = entry.handler(value, ctx);
-      if (next !== undefined) value = next;
+      try {
+        const next = entry.handler(value, ctx);
+        if (next !== undefined) value = next;
+      } catch (error) {
+        console.error(`[agy-max] module "${entry.moduleId}" hook ${slot} failed`, error);
+      }
     }
     return value;
   }

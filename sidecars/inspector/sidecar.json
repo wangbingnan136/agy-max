@@ -4,7 +4,7 @@
     "main.mjs"
   ],
   "env": {
-    "AGY_MAX_VERSION": "1.4.2",
+    "AGY_MAX_VERSION": "1.4.3",
     "NODE_USE_ENV_PROXY": "1"
   },
   "restart_policy": "always",

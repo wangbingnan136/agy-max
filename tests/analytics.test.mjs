@@ -18,6 +18,17 @@ test('buffered provider responses use whole-request timing while streamed respon
  assert.equal(events[0].tps,100);assert.equal(events[0].e2eTps,100);assert.equal(events[0].durationMs,10000);assert.equal(events[0].timestampMs,1000);assert.equal(events[0].id,'same-id');
  assert.equal(events[1].tps,181);assert.equal(events[1].e2eTps,37.2);assert.equal(events[1].durationMs,12260);assert.equal(events[1].effectiveGenMs,2520);
 });
+test('non-streamed replies with a short tail do not inflate tok/s or peak speed',()=>{
+ const events=requestEvents({generations:[
+  // Buffered reply: 9.7s wait, then 180 tokens dumped in a 250ms tail (old logic: 720 tok/s)
+  {requestId:'tail',stepIndices:[],modelName:'m',inputTokens:10,cacheReadTokens:0,outputTokens:180,ttftMs:9750,streamingMs:250},
+  // Short-but-real-looking window that still decodes implausibly fast (old logic: 900 tok/s)
+  {requestId:'fast',stepIndices:[],modelName:'m',inputTokens:10,cacheReadTokens:0,outputTokens:900,ttftMs:9000,streamingMs:1000}
+ ],times:new Map()},'source');
+ assert.equal(events[0].effectiveGenMs,10000);assert.equal(events[0].tps,18);
+ assert.equal(events[1].effectiveGenMs,10000);assert.equal(events[1].tps,90);
+ assert.ok(events.every(e=>e.tps<=500));
+});
 test('progress counts leaf tasks without counting headings twice',()=>{
  const tasks=parseChecklist('- [ ] Parent\n  - [x] First\n  - [/] Active\n- [ ] Later');
  assert.deepEqual(tasks,[{title:'First',status:'complete'},{title:'Active',status:'running'},{title:'Later',status:'pending'}]);

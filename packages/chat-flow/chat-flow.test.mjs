@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +10,8 @@ import { CHAT_FLOW_DEFAULTS, CHAT_FLOW_KEYS } from './settings.mjs';
 import {
   createChatTreeStore,
   OUTSIDE_OF_PROJECT,
-  patchProtoStringField
+  patchProtoStringField,
+  readBtwMetadata
 } from './conversation-tree-store.mjs';
 import { registerModule } from './service.mjs';
 import { fields, string } from '../../lib/protobuf.mjs';
@@ -26,20 +27,27 @@ try {
   ({ DatabaseSync } = process.getBuiltinModule?.('node:sqlite') || createRequire(import.meta.url)('node:sqlite'));
 } catch {}
 
-test('chat-flow package owns inline-images, workbench, and chat-tree scripts', () => {
+test('chat-flow package owns inline-images, workbench, chat-tree, and beta-ai scripts', () => {
   const manifest = JSON.parse(readFileSync(join(import.meta.dirname, 'module.json'), 'utf8'));
   assert.equal(manifest.id, 'chat-flow');
   assert.equal(manifest.defaultInstalled, true);
-  assert.deepEqual(manifest.clientScripts, ['native-inline-images.js', 'prism-workbench.js', 'native-chat-tree.js']);
+  assert.deepEqual(manifest.clientScripts, ['native-inline-images.js', 'prism-workbench.js', 'native-chat-tree.js', 'native-beta-ai.js']);
   assert.equal(existsSync(join(import.meta.dirname, 'native-inline-images.js')), true);
   assert.equal(existsSync(join(import.meta.dirname, 'prism-workbench.js')), true);
   assert.equal(existsSync(join(import.meta.dirname, 'native-chat-tree.js')), true);
+  assert.equal(existsSync(join(import.meta.dirname, 'native-beta-ai.js')), true);
   assert.equal(CHAT_FLOW_DEFAULTS.inlineImages, true);
   assert.equal(CHAT_FLOW_DEFAULTS.conversationMove, true);
   assert.equal(CHAT_FLOW_DEFAULTS.btwSubtree, true);
+  assert.equal(CHAT_FLOW_DEFAULTS.pinOverview, false);
+  assert.equal(CHAT_FLOW_DEFAULTS.betaThinkingTranslate, false);
+  assert.equal(CHAT_FLOW_DEFAULTS.betaComposerPredict, false);
   assert.ok(CHAT_FLOW_KEYS.includes('goalBar'));
   assert.ok(CHAT_FLOW_KEYS.includes('conversationMove'));
   assert.ok(CHAT_FLOW_KEYS.includes('btwSubtree'));
+  assert.ok(CHAT_FLOW_KEYS.includes('pinOverview'));
+  assert.ok(CHAT_FLOW_KEYS.includes('betaThinkingTranslate'));
+  assert.ok(CHAT_FLOW_KEYS.includes('betaComposerPredict'));
 });
 
 test('chat-flow tree store & RPCs persist project moves, SQLite metadata field 18, fold state, and aside detach', async () => {
@@ -794,6 +802,52 @@ test('unreadable state file does not wipe saved state on write', () => {
     assert.equal(store.get().projectOverrides['conv-1'], 'proj-1');
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('failed move save does not leak into the next save', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'agy-ct-rollback-'));
+  try {
+    const filePath = join(dir, 'chat-flow-tree.json');
+    const store = createChatTreeStore(dir);
+    store.moveProject('conv-1', 'proj-1');
+    // A non-empty directory at the target path makes the atomic rename fail.
+    rmSync(filePath);
+    mkdirSync(join(filePath, 'blocker'), { recursive: true });
+    assert.throws(() => store.moveProject('conv-2', 'proj-2'));
+    assert.equal(store.projectOverride('conv-2'), '');
+    rmSync(filePath, { recursive: true, force: true });
+    store.setFolded('conv-1', true);
+    const saved = JSON.parse(readFileSync(filePath, 'utf8'));
+    assert.deepEqual(saved.projectOverrides, { 'conv-1': 'proj-1' });
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('readBtwMetadata reuses parsed annotations until a file changes', () => {
+  const appDir = mkdtempSync(join(tmpdir(), 'agy-ct-ann-'));
+  try {
+    const annDir = join(appDir, 'annotations');
+    mkdirSync(annDir, { recursive: true });
+    const file = join(annDir, 'main-1.pbtxt');
+    const write = title => writeFileSync(file, `side_question_cascade_ids:"btw-1"  side_question_titles:{key:"btw-1"  value:"${title}"}\n`);
+    const t0 = new Date('2026-01-01T00:00:00Z');
+    write('AAAA');
+    utimesSync(file, t0, t0);
+    assert.equal(readBtwMetadata(appDir)['btw-1'].title, 'AAAA');
+    // Same size and mtime: served from cache without re-reading.
+    write('BBBB');
+    utimesSync(file, t0, t0);
+    assert.equal(readBtwMetadata(appDir)['btw-1'].title, 'AAAA');
+    // A real change (new mtime) is picked up.
+    write('CCCC');
+    utimesSync(file, t0, new Date(t0.getTime() + 5000));
+    assert.equal(readBtwMetadata(appDir)['btw-1'].title, 'CCCC');
+    rmSync(file);
+    assert.deepEqual(readBtwMetadata(appDir), {});
+  } finally {
+    rmSync(appDir, { recursive: true, force: true });
   }
 });
 

@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import net from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   DEFAULT_PROXY_BYPASS,
   checkProxyPortOpen,
   chromiumProxyArgs,
+  createProxyFetcher,
   inspectProxyRuntime,
   isValidProxyBypass,
   isValidProxyUrl,
@@ -12,7 +16,9 @@ import {
   normalizeProxyBypass,
   normalizeProxyUrl,
   probeProxyConnectivity,
-  proxySpecFromSettings
+  proxySpecFromSettings,
+  resolveEffectiveProxyConfig,
+  shouldBypassProxy
 } from '../lib/proxy.mjs';
 
 function listenTcp(onConnection) {
@@ -178,4 +184,53 @@ test('external proxy must match the configured bypass list', () => {
   assert.equal(inspectProxyRuntime(settings, matching).reason, 'active');
   const different = { ...matching, no_proxy: '.internal.example' };
   assert.equal(inspectProxyRuntime(settings, different).reason, 'config-changed');
+});
+
+test('shouldBypassProxy, resolveEffectiveProxyConfig, and createProxyFetcher respect agy-max dataDir, CIDR/glob rules, and abort/strict modes', async () => {
+  assert.equal(shouldBypassProxy('https://localhost:8443/v1', DEFAULT_PROXY_BYPASS), true);
+  assert.equal(shouldBypassProxy('https://10.20.30.40/api', '10.0.0.0/8,*.corp.local'), true);
+  assert.equal(shouldBypassProxy('https://sub.corp.local/models', '10.0.0.0/8,*.corp.local'), true);
+  assert.equal(shouldBypassProxy('https://api.openai.com/v1/models', '10.0.0.0/8,*.corp.local'), false);
+  assert.equal(shouldBypassProxy('https://internal.dev:8443/v1', 'internal.dev:8443'), true);
+  assert.equal(shouldBypassProxy('https://internal.dev:443/v1', 'internal.dev:8443'), false);
+
+  const dir = mkdtempSync(join(tmpdir(), 'agy-proxy-cfg-'));
+  try {
+    writeFileSync(join(dir, 'settings.json'), JSON.stringify({
+      proxyEnabled: true,
+      proxyUrl: 'http://127.0.0.1:7897/',
+      proxyBypass: '192.168.0.0/16'
+    }));
+    const resolved = resolveEffectiveProxyConfig({ dataDir: dir, env: { HTTPS_PROXY: 'http://127.0.0.1:9999' } });
+    assert.equal(resolved.proxyUrl, 'http://127.0.0.1:7897');
+    assert.ok(resolved.bypass.includes('192.168.0.0/16'));
+
+    const closed = await listenTcp(() => {});
+    const closedPort = closed.port;
+    await closed.close();
+
+    // Non-strict fetcher falls back to direct fallback when proxy port is down
+    let fallbackCalls = 0;
+    const lenient = createProxyFetcher({
+      proxyUrl: `http://127.0.0.1:${closedPort}`,
+      strictProxy: false,
+      fallback: async url => {
+        fallbackCalls++;
+        return { ok: true, status: 200, url };
+      }
+    });
+    const res = await lenient('https://api.openai.com/v1/models');
+    assert.equal(res.ok, true);
+    assert.equal(fallbackCalls, 1);
+
+    // Strict fetcher rejects instead of leaking direct traffic
+    const strict = createProxyFetcher({
+      proxyUrl: `http://127.0.0.1:${closedPort}`,
+      strictProxy: true,
+      fallback: async () => ({ ok: true, status: 200 })
+    });
+    await assert.rejects(() => strict('https://api.openai.com/v1/models'));
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

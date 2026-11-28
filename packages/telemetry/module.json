@@ -1,6 +1,6 @@
 {
   "id": "telemetry",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "coreRange": ">=1.4.0",
   "defaultInstalled": true,
   "displayName": { "zh-CN": "统计与额度", "en": "Telemetry & Quota" },

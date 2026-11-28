@@ -262,7 +262,9 @@
     let lastMpRoute=onMarketplaceRoute();
     // Code editors, diff views and terminals show the user's own text, never UI labels.
     const codeSurfaces='kbd,samp,.monaco-editor,.monaco-diff-editor,.view-lines,.cm-editor,.cm-content,.xterm,.code-block,.font-mono,.shiki,.hljs,[data-testid*="diff"],[data-testid*="code-viewer"],[data-testid*="file-viewer"],[data-testid*="file-content"],[data-testid*="editor-content"],[data-testid*="terminal"]';
-    const baseExcluded='head,title,[data-agy-powertools-root],[data-agy-management-page],[data-testid="conversation-view"],[data-testid="planner-response-text"],[data-testid="user-input-step"],[contenteditable],pre,code,script,style,textarea,input,.post-body,.post-md,#ov-frame,.raw,.raw-pre,.swarm-title,'+codeSurfaces;
+    // Conversation titles are user content ("Details for x.md" must not become "x.md 详情").
+    const userTitles='[data-testid="conversation-title"],a[href^="/c/"] .truncate,[data-testid="conversation-row-sidebar"] .truncate';
+    const baseExcluded='head,title,[data-agy-powertools-root],[data-agy-management-page],[data-testid="conversation-view"],[data-testid="planner-response-text"],[data-testid="user-input-step"],[contenteditable],pre,code,script,style,textarea,input,.post-body,.post-md,#ov-frame,.raw,.raw-pre,.swarm-title,'+userTitles+','+codeSurfaces;
     const excluded=baseExcluded+',[data-markdown-root]';
     const mpExcluded='aside,nav,[data-testid="sidebar-navigation-items"],[data-testid="conversation-row-sidebar"],.agy-sidebar-row,a[href^="/c/"],a[href="/powertools"],a[href="/automations"],a[href="/customizations"],[data-testid="customization-card"] a,[data-testid="doc-row-title"],h1,h2,h3,h4,h5,h6,[role="tab"],[role="switch"],[role="menuitem"],[role="option"],[role="combobox"],select,label,svg,'+baseExcluded;
     function clearMpTitle(el){
@@ -420,7 +422,7 @@
       queueDynamicNode(trimmed,node);
     }
     function attributes(el){
-      if(el.closest?.('[data-agy-powertools-root],[data-agy-management-page],[data-testid="planner-response-text"],[data-testid="user-input-step"],pre,code,script,style,[data-markdown-root],.post-body,.post-md,#ov-frame,.raw,.raw-pre,.swarm-title,'+codeSurfaces))return;
+      if(el.closest?.('[data-agy-powertools-root],[data-agy-management-page],[data-testid="planner-response-text"],[data-testid="user-input-step"],pre,code,script,style,[data-markdown-root],.post-body,.post-md,#ov-frame,.raw,.raw-pre,.swarm-title,'+userTitles+','+codeSurfaces))return;
       let rec=attrs.get(el);
       for(const name of ['placeholder','title']){
         if(name==='title'&&el.getAttribute?.('data-agy-mp-title')==='1')continue;

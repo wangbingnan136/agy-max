@@ -58,9 +58,9 @@ export async function runHook(raw, cliEvent) {
   try {
     payload = JSON.parse(raw || '{}');
   } catch (error) {
-    // Unparseable payload: cwd is unknown, so PreToolUse falls back to ask
+    // Unparseable payload: cwd is unknown and `ask` becomes allow under auto-approve, so fail closed.
     return cliEvent === 'PreToolUse'
-      ? { decision: 'ask', reason: `agy-max SSH 边界钩子无法解析输入（${error?.message || error}），请确认后再执行。` }
+      ? { decision: 'deny', reason: `agy-max SSH 边界钩子无法解析输入（${error?.message || error}），无法确认是否位于 SSH 项目内，已为安全起见拦截本次工具调用。请重试；如持续出现，请重新安装 agy-max。` }
       : {};
   }
   if (!payload || typeof payload !== 'object') payload = {};

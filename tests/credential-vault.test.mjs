@@ -4,9 +4,11 @@ import { spawnSync } from 'node:child_process';
 import {
   ACTIVE_TARGET,
   ACTIVE_USERNAME,
+  SECRET_SERVICE,
   createCredentialVault,
   decodeDarwinKeychainSecret,
   extractCredentialEmail,
+  secretTargetFor,
   vaultTargetFor
 } from '../lib/credential-vault.mjs';
 
@@ -336,4 +338,55 @@ test('credential email extraction accepts UTF-8 BOM and UTF-16LE envelopes and t
   assert.equal(extractCredentialEmail(Buffer.from(json, 'utf16le')), 'alpha@example.com');
   const envelope = JSON.stringify({ token: Buffer.from('\uFEFF' + json, 'utf16le').toString('base64') });
   assert.equal(extractCredentialEmail(Buffer.from(envelope, 'utf16le')), 'alpha@example.com');
+});
+
+test('generic secret storage uses isolated agy-max-secret namespace and handles read/write/delete & locked keychains', () => {
+  assert.equal(SECRET_SERVICE, 'agy-max-secret');
+  const t1 = secretTargetFor('ai-provider:prov_123');
+  assert.match(t1, /^agy-max-secret:[a-f0-9]{32}$/);
+  assert.match(secretTargetFor('ai-provider:prov_123', { wslDistro: 'Ubuntu-24.04' }), /^agy-max-secret:wsl:Ubuntu-24\.04:[a-f0-9]{32}$/);
+  assert.throws(() => secretTargetFor(''), /凭据标识/);
+  assert.throws(() => secretTargetFor('bad\nkey'), /凭据标识/);
+
+  const macStore = new Map();
+  const macVault = createCredentialVault({
+    platform: 'darwin',
+    runSpawn(cmd, args, opts) {
+      if (cmd === '/usr/bin/security' && args[0] === '-i') {
+        const m = String(opts?.input || '').match(/-s "([^"]+)" -a "([^"]+)" -X ([0-9a-f]+)/);
+        if (m) macStore.set(`${m[1]}::${m[2]}`, Buffer.from(m[3], 'hex').toString('utf8'));
+        return { status: 0, stdout: '', stderr: '' };
+      }
+      if (cmd === '/usr/bin/security' && args[0] === 'find-generic-password') {
+        const key = `${args[2]}::${args[4]}`;
+        if (!macStore.has(key)) return { status: 44, stdout: '', stderr: 'could not be found' };
+        return { status: 0, stdout: Buffer.from(macStore.get(key) + '\n', 'utf8'), stderr: '' };
+      }
+      if (cmd === '/usr/bin/security' && args[0] === 'delete-generic-password') {
+        macStore.delete(`${args[2]}::${args[4]}`);
+        return { status: 0, stdout: '', stderr: '' };
+      }
+      return { status: 1, stdout: '', stderr: 'unexpected' };
+    }
+  });
+
+  assert.equal(macVault.readSecret('ai-provider:p1').exists, false);
+  assert.equal(macVault.writeSecret('ai-provider:p1', 'sk-live-secret-999').ok, true);
+  const readBack = macVault.readSecret('ai-provider:p1');
+  assert.equal(readBack.ok, true);
+  assert.equal(readBack.exists, true);
+  assert.equal(readBack.value, 'sk-live-secret-999');
+  assert.equal(macVault.deleteSecret('ai-provider:p1').ok, true);
+  assert.equal(macVault.readSecret('ai-provider:p1').exists, false);
+
+  const lockedVault = createCredentialVault({
+    platform: 'darwin',
+    runSpawn() {
+      return { status: 36, stdout: '', stderr: 'User interaction is not allowed (-25308)' };
+    }
+  });
+  const lockedRead = lockedVault.readSecret('ai-provider:p1');
+  assert.equal(lockedRead.ok, false);
+  assert.equal(lockedRead.available, false);
+  assert.equal(lockedRead.reason, 'vault-unavailable');
 });

@@ -2,6 +2,7 @@ export const CHAT_FLOW_DEFAULTS = Object.freeze({
   compact: true,
   keepTurnOutline: true,
   keepOverviewOpen: true,
+  pinOverview: false,
   responseBranch: true,
   conversationMove: true,
   btwSubtree: true,
@@ -21,6 +22,14 @@ export const CHAT_FLOW_DEFAULTS = Object.freeze({
   linkTarget: 'builtin',
   quickContextMenu: false,
   contextLimit: 0,
+  betaThinkingTranslate: false,
+  betaThinkingEngine: 'free',
+  betaThinkingDisplay: 'replace',
+  betaThinkingTrigger: 'auto',
+  betaComposerPredict: false,
+  betaAiModel: '',
+  betaAiTranslateModel: '',
+  betaAiPredictModel: '',
   chatModeBeta: false,
   homeStudio: false
 });

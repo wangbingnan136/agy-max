@@ -16,10 +16,26 @@
 
 仅安装用户指定的项目。不修改其他插件、账户、权限或聊天文件，不在当前对话发送测试提示，不要求管理员权限。
 
+## 从旧版本升级
+
+用户已装有 Antigravity Max（存在 `~/.gemini/config/plugins/agy-max/.agy-install.json`）时：
+
+1. 从正式 Release 下载最新 ZIP 解压，直接运行上面的统一安装入口覆盖安装。**不要先运行卸载脚本**：卸载会删除个人设置，而新版靠这些设置识别老用户、自动装回用过的可选模块（SSH、多账号等），删掉后这些模块不会恢复。
+2. 安装完成后，核对 `.agy-install.json` 里的版本与 Release 最新标签一致（标签去掉开头的 `v`）。
+3. 提醒用户完全退出 Antigravity（macOS 用 `⌘Q`）再重新打开，只刷新页面不会生效。
+
+v1.4.1 及更早版本的应用内更新不支持 v1.4.2 的新安装包结构，只会显示「打开下载页」，必须按上面的步骤覆盖安装一次；之后的版本恢复应用内一键更新。
+
 ## 一键复制给 Agent 的安装指令
 
 ```text
 请帮我安装 Antigravity Max（https://github.com/wangbingnan136/agy-max）：先阅读仓库内的 docs/INSTALL_AGENT.md，按统一安装脚本静默安装，保留现有聊天记录与配置，不要强关当前窗口，装完核对版本并提醒我重启即可。
+```
+
+老用户升级用这句：
+
+```text
+请帮我把 Antigravity Max 升级到最新版（https://github.com/wangbingnan136/agy-max）：从 Releases 下载最新版 ZIP 并解压，先阅读仓库里的 docs/INSTALL_AGENT.md，然后用统一安装脚本直接覆盖安装。千万不要先卸载。保留现有聊天记录、设置、多账号和 SSH 项目，不要强关当前窗口。装完核对已安装版本和 Release 最新版本号一致，再提醒我完全退出并重启 Antigravity。
 ```
 
 若使用已下载的本地目录，将提示词中的链接替换为本地目录路径即可。

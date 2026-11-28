@@ -286,6 +286,18 @@ test('native-i18n preserves dynamic title/placeholder updates and handles ja/yue
   }
 });
 
+test('localizer leaves sidebar conversation titles (user content) untranslated', () => {
+  const node = (value, matches = []) => ({ nodeValue: value, parentElement: { closest: sel => matches.some(m => sel.split(',').includes(m)) ? {} : null } });
+  const nodes = [node('Details for x.md', ['[data-testid="conversation-title"]']), node('Settings', ['a[href^="/c/"] .truncate']), node('Details for x.md', ['[data-testid="conversation-row-sidebar"] .truncate']), node('Details for x.md')];
+  const document = { nodeType: 9, body: { nodeType: 1, getAttribute: () => null, closest: () => null, querySelectorAll: () => [] }, createTreeWalker: () => { let i = 0; return { nextNode: () => nodes[i++] || null }; }, querySelectorAll: () => [] };
+  const context = vm.createContext({ document, NodeFilter: { SHOW_TEXT: 4 }, MutationObserver: class { observe() {} disconnect() {} }, __agyToZhTw: toZhTw });
+  vm.runInContext(readFileSync('packages/i18n/native-i18n.js', 'utf8'), context);
+  const loc = context.__agyI18n.localizer();
+  loc.apply('zh-CN', true);
+  assert.deepEqual(nodes.map(n => n.nodeValue), ['Details for x.md', 'Settings', 'Details for x.md', 'x.md 详情']);
+  loc.dispose();
+});
+
 test('localizer leaves code editors, diff viewers and terminals untranslated', () => {
   const node = (value, matches = []) => ({ nodeValue: value, parentElement: { closest: sel => matches.some(m => sel.split(',').includes(m)) ? {} : null } });
   const nodes = [node('Settings', ['.monaco-editor']), node('Settings', ['.monaco-diff-editor']), node('Settings', ['[data-testid*="diff"]']), node('Settings', ['.xterm']), node('Settings', ['.view-lines']), node('Settings')];

@@ -1,6 +1,6 @@
 {
   "id": "ssh-remote",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "coreRange": ">=1.4.0",
   "defaultInstalled": false,
   "displayName": { "zh-CN": "SSH 远端工程", "en": "Single-Window SSH Projects" },

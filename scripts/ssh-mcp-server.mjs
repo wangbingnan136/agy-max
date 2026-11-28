@@ -14,7 +14,7 @@ const isInstalledPluginRuntime = (() => {
 })();
 
 const PROTOCOL_VERSION = '2024-11-05';
-const SERVER_INFO = { name: 'agy-ssh-projects', version: '1.4.2' };
+const SERVER_INFO = { name: 'agy-ssh-projects', version: '1.4.3' };
 
 const store = createSshProjectsStore();
 const runner = createSshRunner({ store });

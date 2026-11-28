@@ -154,6 +154,16 @@ Please install Antigravity Max from https://github.com/wangbingnan136/agy-max : 
 
 See [Agent installation guide](docs/INSTALL_AGENT.md) for details.
 
+### Upgrading from v1.4.1 or earlier: one-line prompt
+
+The package layout changed in v1.4.2, so older in-app updaters only show "Open download page" and can't update in one click. Copy this into Antigravity (or Claude Code / Codex) and it will install the latest version over your current one:
+
+```text
+Please upgrade Antigravity Max to the latest version (https://github.com/wangbingnan136/agy-max): download the latest ZIP from Releases and extract it, read docs/INSTALL_AGENT.md in the repository first, then install over the existing copy with the unified installer. Do NOT uninstall first. Keep my existing chats, settings, accounts and SSH projects, and don't close my active window. When done, verify the installed version matches the latest Release, then remind me to fully quit and reopen Antigravity.
+```
+
+**Install over the existing copy. Do not uninstall first.** Uninstalling deletes your settings, so the new version can no longer tell you are an existing user and won't reinstall the optional modules you used (SSH, Multi-Account, and so on). After this one upgrade, later versions update in-app with one click.
+
 ### Option 2: Command line
 
 Download and extract the latest ZIP from [Releases](https://github.com/wangbingnan136/agy-max/releases) (or clone this repository), then run:
@@ -173,7 +183,7 @@ Restart Antigravity once you finish your current task, open the right Side Panel
 ### Updates and uninstall
 
 - **In-app updates**: Go to **Antigravity Max -> Settings -> Updates** and click **Check for updates** or **Auto update**. Packages are SHA-256 verified and roll back automatically if startup fails.
-- **Upgrading from v1.4.1 or earlier**: The package layout changed in v1.4.2, so older in-app updaters show "Go to download page". Reinstall once as described above (settings, accounts, and SSH projects are kept, and optional modules you used are reinstalled automatically); in-app updates work again afterwards.
+- **Upgrading from v1.4.1 or earlier**: The package layout changed in v1.4.2, so older in-app updaters show "Open download page". Use the one-line upgrade prompt above, or install over your current copy once with Option 2, **without uninstalling first** (settings, accounts, and SSH projects are kept, and optional modules you used are reinstalled automatically); in-app updates work again afterwards.
 - **Installing or removing modules**: Open **Antigravity Max -> Modules** and install or uninstall a module. Uninstalling keeps its settings by default; ticking "Also delete" removes the module's local settings and its credentials in the OS keychain, which cannot be undone.
 - **Uninstall**: Run `sh ./uninstall.sh` (macOS / Linux / WSL2) or `powershell -NoProfile -ExecutionPolicy Bypass -File .\uninstall.ps1` (Windows). Append `--keep-settings` to keep your preferences.
 
@@ -203,6 +213,20 @@ Every setting applies live in **Antigravity Max -> Settings** and saves automati
 
 ## Changelog
 
+### v1.4.3
+- **Drag a sidebar conversation into the composer to reference it** (thanks @andrew05060414, PR #31): Codex-style — drop a conversation from the left sidebar onto the composer to insert a native `@` conversation mention; clients without support fall back to a `[Title](conversation://…)` link without touching your draft.
+- **Voice buttons fixed with "Restyle composer card" on** (thanks @andrew05060414, PR #30): The voice-mode button is no longer deformed or offset, and the dictation recording highlight no longer disappears in light mode.
+- **Model menu no longer turns invisible**: Turning off the effort slider while keeping "Remember effort level" no longer leaves the model menu transparent and unclickable.
+- **One broken module can no longer take down the whole UI**: Each module's client script is checked and run on its own; a failure is logged with the module's name.
+- **Sturdier module installs**: Replacing a module backs up the old copy first, retries locked files on Windows and restores on failure; an unreadable module manifest no longer reinstalls modules you removed; the 16 MB download cap is enforced while streaming; modules that need a newer core are refused with a clear reason.
+- **"Also clear data" is more thorough and safer**: It now deletes the module's data files too (e.g. `chat-flow-tree.json`, `goals.json`); if a keychain credential can't be deleted, its record is kept and you're told, instead of leaving an orphaned secret. A full command-line uninstall now also removes saved account credentials and SSH passwords from the keychain.
+- **Users who only changed corner radius, frame rate or similar** now get the Interface & Optics module reinstalled automatically on upgrade.
+- **An SSH drop mid-command never runs the command twice**: Only failures that provably happened before the remote command started are retried; a mid-command drop tells you to check the server first.
+- **Stricter SSH execution boundary**: Unknown local tools are blocked if any path they carry is outside the project; malformed hook input is denied; after the SSH module is uninstalled, block messages point you to reinstall it instead of to tools that no longer exist.
+- **More accurate stats**: Non-streamed replies no longer inflate tok/s and peak speed.
+- **Localization leaves conversation titles alone**: A title like "Details for x.md" is no longer shown as "x.md 详情".
+- **Faster sidebar and /btw**: Annotation files are cached by modification time instead of re-read every time; a failed drag-move save no longer sneaks onto disk with the next save.
+
 ### v1.4.2
 - **Modular by design (1 core + 8 modules)**: Features are split into 8 hot-pluggable modules. Four ship by default (Telemetry & Quota, Chat Flow, Workspace & Navigation, Localization); Interface & Optics, Multi-Account Switcher, Standalone Proxy and SSH Projects are now installed on demand from **Antigravity Max -> Modules**. Downloads are SHA-256 verified and fall back to a bundled offline copy; uninstalling can keep or fully delete a module's settings and credentials (including saved accounts and SSH passwords in the OS keychain). Upgrading from v1.4.x keeps the optional modules you were using.
 - **Drag conversations between projects and nested /btw side chats**: Drag a conversation onto another project (or out of one); /btw side questions sit under their main conversation, can be folded, and can be detached into a main conversation.
@@ -212,7 +236,7 @@ Every setting applies live in **Antigravity Max -> Settings** and saves automati
 - **Sturdier, safer SSH**: Output printed by remote login scripts no longer leaks into file reads and command results; the remote execution boundary blocks the call when the hook fails, the project marker is corrupt, or the working directory is unknown; hooks never run a same-named script from the current directory; new end-to-end tests run against a real sshd.
 - **Large secrets saved in full to the macOS Keychain**: Account credentials over about 2 KB used to be truncated and are now stored completely.
 - **Translations and upstream sync**: Translated new Antigravity 2.35.x UI strings; bundled `agy-fast` bumped to `v0.3.2`.
-- **Upgrading from v1.4.1 or earlier needs one manual reinstall**: The package layout changed, so older in-app updaters show "Go to download page". Reinstall once with the install command above or the ZIP from the release (settings, accounts and SSH projects are kept); in-app updates work again from then on. Fully quit Antigravity (`⌘Q` on macOS) and reopen it after upgrading.
+- **Upgrading from v1.4.1 or earlier needs one manual reinstall**: The package layout changed, so older in-app updaters show "Open download page". Reinstall once with the install command above or the ZIP from the release (settings, accounts and SSH projects are kept); in-app updates work again from then on. Fully quit Antigravity (`⌘Q` on macOS) and reopen it after upgrading.
 
 ### v1.4.1
 - **More reliable SSH connections**: When the SSH handshake is dropped (`kex_exchange_identification`, `Connection closed/reset by ... port N`), the remote command is retried once. The command had not started yet, so it can never run twice. A handshake that keeps failing is now reported as a transient network or gateway problem instead of a wrong key, and authentication failures are not retried.

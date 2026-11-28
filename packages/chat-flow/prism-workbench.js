@@ -1304,6 +1304,8 @@
         clearTriggerEffortTint();
         return;
       }
+      // Slider off: drop the codex selector gate too, or its pre-cloak keeps the unstamped native menu invisible.
+      if (!opts.effortSlider) clearTriggerEffortTint();
       const panels = [...(document.querySelectorAll?.('[data-testid="model-selector-panel"], [data-testid="model-selector-list"], [role="dialog"], [role="listbox"], [role="menu"]') || [])];
       const hasExplicitModelPanel = Boolean(document.querySelector?.('[data-testid="model-selector-panel"], [data-testid="model-selector-list"], [data-testid="model-selector-effort-group"], [data-testid="model-selector-item"]'));
       const validPanels = new Set();

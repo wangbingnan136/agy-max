@@ -1988,3 +1988,38 @@ test('Effort Slider transforms newly mounted model-selector-panel synchronously 
 
   wb.dispose();
 });
+
+test('Model menu stays visible after the effort slider is turned off while effort memory stays on', () => {
+  const dom = createMockDom();
+  const { document } = dom;
+  const modelOptions = [
+    { label: 'Gemini 4 Carbon (Low)', value: 1 },
+    { label: 'Gemini 4 Carbon (High)', value: 2 }
+  ];
+  const fiberNode = { memoizedProps: { modelOptions, selectedModel: modelOptions[0], setSelectedModel() {}, setIsOpen() {} }, return: null };
+  const trigger = document.createElement('button');
+  trigger.setAttribute('data-testid', 'model-selector-trigger');
+  trigger.textContent = 'Gemini 4 Carbon Low';
+  trigger['__reactFiber$test'] = fiberNode;
+  document.body.appendChild(trigger);
+
+  const opts = { enabled: true, language: 'zh-CN', effortSlider: true, effortMemory: true };
+  const wb = dom.createWorkbench({ options: () => opts });
+  assert.equal(document.documentElement.getAttribute('data-agy-codex-selector'), '1');
+
+  opts.effortSlider = false;
+  wb.sync();
+  trigger.setAttribute('aria-expanded', 'true');
+  const panel = document.createElement('div');
+  panel.setAttribute('data-testid', 'model-selector-panel');
+  panel['__reactFiber$test'] = fiberNode;
+  panel.appendChild(document.createElement('div'));
+  document.body.appendChild(panel);
+  wb.sync();
+
+  // The pre-cloak rule hides unstamped panels only under html[data-agy-codex-selector="1"]; it must be gone now.
+  assert.equal(document.documentElement.getAttribute('data-agy-codex-selector'), null);
+  assert.equal(panel.getAttribute('data-agy-codex-stage'), null);
+  assert.equal(panel.querySelector('[data-testid="agy-effort-slider"]'), null);
+  wb.dispose();
+});

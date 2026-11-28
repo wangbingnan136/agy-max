@@ -1,4 +1,6 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
+import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -447,7 +449,7 @@ test('concurrent installs keep both modules, online modules refresh on core upgr
       return { ok: true, url: 'https://objects.githubusercontent.com/asset', arrayBuffer: async () => assets[name] };
     };
     const removed = { accounts: [], ssh: [] };
-    const vaults = { accounts: { removeSaved: id => removed.accounts.push(id) }, ssh: { removePassword: id => removed.ssh.push(id) } };
+    const vaults = { accounts: { removeSaved: id => (removed.accounts.push(id), { ok: true }) }, ssh: { removePassword: id => (removed.ssh.push(id), { ok: true, status: 'missing' }) } };
     const make = version => createModuleRegistry({
       home: s.home, pluginRoot: REPO_ROOT, installedPluginDir: installedDir, dataDir: s.dataDir,
       settingsStore: createSettingsStore(s.dataDir), defaultSettings: DEFAULT_SETTINGS,
@@ -481,6 +483,220 @@ test('concurrent installs keep both modules, online modules refresh on core upgr
     await make('1.4.2').uninstallModule('ssh-remote', { purgeData: true });
     assert.deepEqual(removed.ssh, ['host-1']);
     assert.equal(JSON.parse(readFileSync(join(installedDir, 'hooks.json'), 'utf8'))['agy-max-ssh-boundary'].enabled, false);
+  } finally {
+    s.clean();
+  }
+});
+
+function makeRegistry(s, extra = {}) {
+  return createModuleRegistry({
+    home: s.home,
+    pluginRoot: REPO_ROOT,
+    dataDir: s.dataDir,
+    settingsStore: createSettingsStore(s.dataDir),
+    defaultSettings: DEFAULT_SETTINGS,
+    version: '1.4.1',
+    ...extra
+  });
+}
+
+test('each module client script is isolated: syntax errors are replaced by a logged stub and runtime throws are caught per module', () => {
+  const s = makeSandbox();
+  try {
+    const devOptics = join(s.home, '.gemini', 'config', 'plugins', 'agy-optics');
+    mkdirSync(devOptics, { recursive: true });
+    writeFileSync(join(devOptics, 'module.json'), JSON.stringify({ id: 'optics', version: '1.4.1' }));
+    writeFileSync(join(devOptics, 'prism-optics.js'), '(() => { const broken = ;');
+    const devNav = join(s.home, '.gemini', 'config', 'plugins', 'agy-workspace-nav');
+    mkdirSync(devNav, { recursive: true });
+    writeFileSync(join(devNav, 'module.json'), JSON.stringify({ id: 'workspace-nav', version: '1.4.1' }));
+    writeFileSync(join(devNav, 'aux-file-tree.js'), "throw new Error('boom-nav');");
+    const registry = makeRegistry(s);
+    const src = nativeSource('https://127.0.0.1:5000', [], {
+      activeModules: registry.activeIds(),
+      resolveModuleDir: id => registry.moduleDir(id)
+    });
+    assert.doesNotThrow(() => new vm.Script(src));
+    assert.ok(!src.includes('const broken = ;'));
+    assert.ok(src.includes('console.error("[agy-max] module \\"optics\\" client script prism-optics.js failed"'));
+    assert.ok(src.includes("try{\nthrow new Error('boom-nav');\n}catch(error){console.error(\"[agy-max] module \\\"workspace-nav\\\" client script aux-file-tree.js failed\",error);}"));
+    // Sibling modules still ship their code.
+    assert.ok(src.includes('__agyCreateWorkbench'));
+  } finally {
+    s.clean();
+  }
+});
+
+test('an unreadable module manifest is not treated as first install and is left untouched', async () => {
+  const s = makeSandbox();
+  try {
+    const registry = makeRegistry(s);
+    registry.ensureInitialized();
+    await registry.uninstallModule('i18n');
+    const manifestPath = join(s.dataDir, 'modules-manifest.json');
+    writeFileSync(manifestPath, '{"format":1,"installed":[');
+    const again = makeRegistry(s);
+    assert.equal(again.isActive('i18n'), false);
+    assert.equal(again.isActive('telemetry'), true);
+    assert.equal(readFileSync(manifestPath, 'utf8'), '{"format":1,"installed":[');
+  } finally {
+    s.clean();
+  }
+});
+
+test('module replace keeps the old directory when the swap rename stays locked and retries transient locks', async () => {
+  const s = makeSandbox();
+  const realRename = fs.renameSync;
+  try {
+    const registry = makeRegistry(s);
+    await registry.installModule('proxy', { preferSeed: true });
+    const marker = join(s.dataDir, 'modules', 'proxy', 'old-marker.txt');
+    writeFileSync(marker, 'old');
+    const lockedError = code => Object.assign(new Error(`${code}: locked`), { code });
+
+    mock.method(fs, 'renameSync', (from, to) => {
+      if (/\.stage-proxy-[^/\\]+$/.test(String(from))) throw lockedError('EPERM');
+      return realRename(from, to);
+    });
+    syncBuiltinESMExports();
+    await assert.rejects(() => registry.installModule('proxy', { preferSeed: true }), /EPERM/);
+    mock.restoreAll();
+    syncBuiltinESMExports();
+    assert.equal(readFileSync(marker, 'utf8'), 'old');
+    assert.equal(registry.isActive('proxy'), true);
+    assert.deepEqual(readdirSync(join(s.dataDir, 'modules')).filter(n => n.startsWith('.')), []);
+
+    let failures = 1;
+    mock.method(fs, 'renameSync', (from, to) => {
+      if (/\.stage-proxy-[^/\\]+$/.test(String(from)) && failures-- > 0) throw lockedError('EBUSY');
+      return realRename(from, to);
+    });
+    syncBuiltinESMExports();
+    await registry.installModule('proxy', { preferSeed: true });
+    mock.restoreAll();
+    syncBuiltinESMExports();
+    assert.equal(existsSync(marker), false);
+    assert.equal(existsSync(join(s.dataDir, 'modules', 'proxy', 'module.json')), true);
+    assert.deepEqual(readdirSync(join(s.dataDir, 'modules')).filter(n => n.startsWith('.')), []);
+  } finally {
+    mock.restoreAll();
+    syncBuiltinESMExports();
+    s.clean();
+  }
+});
+
+test('module download enforces the 16MB cap while streaming and from Content-Length, then falls back to the seed', async () => {
+  const s = makeSandbox();
+  try {
+    const asset = moduleReleaseName('optics', '1.4.1');
+    let pulled = 0;
+    let mode = 'stream';
+    const fetcher = async url => {
+      if (String(url).endsWith('.sha256')) return { ok: true, text: async () => `${'a'.repeat(64)}  ${asset}\n` };
+      if (mode === 'header') {
+        return {
+          ok: true,
+          headers: new Headers({ 'content-length': String(64 * 1024 * 1024) }),
+          body: { async *[Symbol.asyncIterator]() { pulled++; yield new Uint8Array(1); } },
+          arrayBuffer: async () => { throw new Error('body must not be read'); }
+        };
+      }
+      return {
+        ok: true,
+        headers: new Headers(),
+        body: { async *[Symbol.asyncIterator]() { for (let i = 0; i < 64; i++) { pulled++; yield new Uint8Array(1024 * 1024); } } },
+        arrayBuffer: async () => { throw new Error('body must be streamed'); }
+      };
+    };
+    const registry = makeRegistry(s, { githubUrl: 'https://github.com/owner/repo', fetcher });
+    assert.equal((await registry.installModule('optics')).delivery, 'seed');
+    assert.ok(pulled <= 17, `pulled ${pulled} chunks`);
+    pulled = 0;
+    mode = 'header';
+    assert.equal((await registry.installModule('optics')).delivery, 'seed');
+    assert.equal(pulled, 0);
+  } finally {
+    s.clean();
+  }
+});
+
+test('coreRange is enforced at install and load time', async () => {
+  const s = makeSandbox();
+  try {
+    const devProxy = join(s.home, '.gemini', 'config', 'plugins', 'agy-proxy');
+    mkdirSync(devProxy, { recursive: true });
+    writeFileSync(join(devProxy, 'module.json'), JSON.stringify({ id: 'proxy', version: '9.0.0', coreRange: '>=9.0.0' }));
+    const registry = makeRegistry(s);
+    const proxy = registry.listModules().find(m => m.id === 'proxy');
+    assert.equal(proxy.installed, true);
+    assert.equal(proxy.active, false);
+    assert.match(proxy.error, /核心版本 >=9\.0\.0/);
+    assert.equal(registry.activeIds().includes('proxy'), false);
+    assert.equal(registry.isActive('telemetry'), true);
+
+    const oldCore = makeRegistry(s, { version: '1.3.9' });
+    await assert.rejects(() => oldCore.installModule('accounts', { preferSeed: true }), /核心版本 >=1\.4\.0/);
+    assert.equal(existsSync(join(s.dataDir, 'modules', 'accounts')), false);
+  } finally {
+    s.clean();
+  }
+});
+
+test('purge removes the module data files and v1.4.x optics users are detected from any non-default optics setting', async () => {
+  const s = makeSandbox();
+  try {
+    writeFileSync(join(s.dataDir, 'settings.json'), JSON.stringify({ ...DEFAULT_SETTINGS, targetFps: 60 }));
+    const registry = makeRegistry(s);
+    assert.equal(registry.isActive('optics'), true);
+
+    for (const name of ['chat-flow-tree.json', 'goals.json', 'priority.json']) writeFileSync(join(s.dataDir, name), '{}');
+    await registry.uninstallModule('workspace-nav');
+    assert.equal(existsSync(join(s.dataDir, 'priority.json')), true);
+    await registry.uninstallModule('chat-flow', { purgeData: true });
+    assert.equal(existsSync(join(s.dataDir, 'chat-flow-tree.json')), false);
+    assert.equal(existsSync(join(s.dataDir, 'goals.json')), false);
+    assert.equal(existsSync(join(s.dataDir, 'settings.json')), true);
+  } finally {
+    s.clean();
+  }
+  const fresh = makeSandbox();
+  try {
+    writeFileSync(join(fresh.dataDir, 'settings.json'), JSON.stringify(DEFAULT_SETTINGS));
+    assert.equal(makeRegistry(fresh).isActive('optics'), false);
+  } finally {
+    fresh.clean();
+  }
+});
+
+test('purge keeps the credential index file and reports failures when keychain removal fails', async () => {
+  const s = makeSandbox();
+  try {
+    writeFileSync(join(s.dataDir, 'accounts.json'), JSON.stringify({ accounts: [{ id: 'acc-1' }, { id: 'acc-2' }] }));
+    mkdirSync(join(s.dataDir, 'ssh-projects'), { recursive: true });
+    writeFileSync(join(s.dataDir, 'ssh-projects', 'hosts.json'), JSON.stringify({ format: 1, hosts: { 'host-1': {} } }));
+    const vaults = {
+      accounts: { removeSaved: id => (id === 'acc-2' ? { ok: false, error: 'keychain locked' } : { ok: true }) },
+      ssh: { removePassword: () => { throw new Error('secret-tool missing'); } }
+    };
+    const registry = makeRegistry(s, { vaults });
+    await registry.installModule('accounts', { preferSeed: true });
+    await registry.installModule('ssh-remote', { preferSeed: true });
+
+    const acc = await registry.uninstallModule('accounts', { purgeData: true });
+    assert.deepEqual(acc.credentialFailures, [{ id: 'acc-2', error: 'keychain locked' }]);
+    assert.equal(existsSync(join(s.dataDir, 'accounts.json')), true);
+    assert.equal(registry.isActive('accounts'), false);
+
+    const ssh = await registry.uninstallModule('ssh-remote', { purgeData: true });
+    assert.deepEqual(ssh.credentialFailures, [{ id: 'host-1', error: 'secret-tool missing' }]);
+    assert.equal(existsSync(join(s.dataDir, 'ssh-projects', 'hosts.json')), true);
+    assert.equal(registry.isActive('ssh-remote'), false);
+
+    // Removal reported as "missing" counts as success and the data is purged.
+    await registry.installModule('accounts', { preferSeed: true });
+    const ok = await makeRegistry(s, { vaults: { accounts: { removeSaved: () => ({ ok: true, status: 'missing' }) } } }).uninstallModule('accounts', { purgeData: true });
+    assert.equal(ok.credentialFailures, undefined);
+    assert.equal(existsSync(join(s.dataDir, 'accounts.json')), false);
   } finally {
     s.clean();
   }

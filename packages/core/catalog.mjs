@@ -13,11 +13,13 @@ export const MODULE_CATALOG = Object.freeze([
       en: 'Context ring, TTFT, pure decode tok/s dial, single-account quota countdowns, and 53-week usage dashboard.'
     }),
     settingsKeys: Object.freeze([
-      'overviewRange', 'contextRing', 'speedStats', 'progress',
-      'overviewQuota', 'subagentTelemetry', 'timing', 'toolDetails'
+      'overviewRange', 'contextRing', 'speedStats', 'composerIndicatorTone',
+      'composerIndicatorCompact', 'composerQuota', 'composerQuotaWindow',
+      'progress', 'overviewQuota', 'subagentTelemetry', 'timing', 'toolDetails'
     ]),
     clientHelpers: Object.freeze(['dashboard.mjs', 'cache.mjs', 'account-helpers.mjs']),
-    clientScripts: Object.freeze(['calendar-vendor.js'])
+    clientScripts: Object.freeze(['calendar-vendor.js']),
+    dataFiles: Object.freeze(['pricing.json', 'quota-samples.json', 'account-timeline.json'])
   }),
   Object.freeze({
     id: 'chat-flow',
@@ -31,16 +33,19 @@ export const MODULE_CATALOG = Object.freeze([
       en: 'Flexible project move, nested /btw side-chat tree, in-place message editing, inline image chips, branching, Markdown copy, /goal bar, code folding, and inline diff.'
     }),
     settingsKeys: Object.freeze([
-      'compact', 'keepTurnOutline', 'keepOverviewOpen', 'responseBranch',
+      'compact', 'keepTurnOutline', 'keepOverviewOpen', 'pinOverview', 'responseBranch',
       'conversationMove', 'btwSubtree',
       'copySessionMarkdown', 'messageEdit', 'inlineImages', 'goalBar',
       'stageUpdates', 'efficientIO', 'pragmaticCoding', 'effortSlider',
       'effortMemory', 'codeBlockFold', 'railHoverOutline', 'inlineStepDiff',
       'omniViewer', 'linkTarget', 'quickContextMenu', 'contextLimit',
+      'betaThinkingTranslate', 'betaThinkingEngine', 'betaThinkingDisplay', 'betaThinkingTrigger',
+      'betaComposerPredict', 'betaAiModel', 'betaAiTranslateModel', 'betaAiPredictModel',
       'chatModeBeta', 'homeStudio'
     ]),
     clientHelpers: Object.freeze([]),
-    clientScripts: Object.freeze(['native-inline-images.js', 'prism-workbench.js', 'native-chat-tree.js'])
+    clientScripts: Object.freeze(['native-inline-images.js', 'prism-workbench.js', 'native-chat-tree.js', 'native-beta-ai.js']),
+    dataFiles: Object.freeze(['chat-flow-tree.json', 'goals.json', 'ai-providers.json', 'thinking-translate-cache.json'])
   }),
   Object.freeze({
     id: 'workspace-nav',
@@ -60,7 +65,8 @@ export const MODULE_CATALOG = Object.freeze([
       'priorityMaxItems', 'priorityVisibleRows', 'taskbarBadge', 'agyFast'
     ]),
     clientHelpers: Object.freeze([]),
-    clientScripts: Object.freeze(['aux-file-tree.js'])
+    clientScripts: Object.freeze(['aux-file-tree.js']),
+    dataFiles: Object.freeze(['priority.json', 'recent-workspaces.json'])
   }),
   Object.freeze({
     id: 'i18n',
@@ -75,7 +81,8 @@ export const MODULE_CATALOG = Object.freeze([
     }),
     settingsKeys: Object.freeze(['language', 'marketplaceTranslate']),
     clientHelpers: Object.freeze(['zh-tw.mjs']),
-    clientScripts: Object.freeze(['native-i18n.js'])
+    clientScripts: Object.freeze(['native-i18n.js']),
+    dataFiles: Object.freeze(['marketplace-i18n-cache.json'])
   }),
   Object.freeze({
     id: 'optics',
@@ -116,7 +123,8 @@ export const MODULE_CATALOG = Object.freeze([
       'accountViewMode', 'accountQuotaWindow'
     ]),
     clientHelpers: Object.freeze(['account-helpers.mjs']),
-    clientScripts: Object.freeze([])
+    clientScripts: Object.freeze([]),
+    dataFiles: Object.freeze(['accounts.json'])
   }),
   Object.freeze({
     id: 'proxy',
@@ -148,6 +156,7 @@ export const MODULE_CATALOG = Object.freeze([
     inlineModuleScripts: Object.freeze(['native-ssh-paste.mjs']),
     clientHelpers: Object.freeze([]),
     clientScripts: Object.freeze(['native-ssh-projects.js']),
+    dataFiles: Object.freeze(['ssh-projects']),
     hasMcp: true,
     hasBoundaryHook: true
   })
@@ -162,7 +171,26 @@ export function isKnownModuleId(id) {
   return typeof id === 'string' && MODULE_BY_ID.has(id);
 }
 
-export function detectLegacyUsedOptionalModules(rawSettings = {}, { hasSavedAccounts = false, hasSavedSsh = false } = {}) {
+// coreRange in module.json uses the minimal form `>=X.Y.Z` (or an exact `X.Y.Z`), compared against the core version.
+export function coreRangeSatisfied(range, coreVersion) {
+  if (range === undefined || range === null || range === '') return true;
+  const parse = v => {
+    const m = String(v || '').trim().match(/^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?$/);
+    return m ? m.slice(1, 4).map(Number) : null;
+  };
+  const m = String(range).trim().match(/^(>=)?\s*(\S+)$/);
+  const want = m ? parse(m[2]) : null;
+  const have = parse(coreVersion);
+  if (!want || !have) return false;
+  const cmp = have[0] - want[0] || have[1] - want[1] || have[2] - want[2];
+  return m[1] ? cmp >= 0 : cmp === 0;
+}
+
+const sameSetting = (a, b) => a === b || JSON.stringify(a) === JSON.stringify(b);
+
+// `defaults` are the core DEFAULT_SETTINGS; v1.4.x stored settings as full objects, so any optics key that
+// differs from its default means optics was in use.
+export function detectLegacyUsedOptionalModules(rawSettings = {}, { hasSavedAccounts = false, hasSavedSsh = false, defaults = null } = {}) {
   const detected = new Set();
   const s = rawSettings && typeof rawSettings === 'object' ? rawSettings : {};
   const usedOptics = (
@@ -181,7 +209,8 @@ export function detectLegacyUsedOptionalModules(rawSettings = {}, { hasSavedAcco
     s.contextStyle === 'vial' ||
     (s.accentTone && s.accentTone !== 'follow') ||
     (s.codeFont && s.codeFont !== 'default') ||
-    s.codeLigatures === true
+    s.codeLigatures === true ||
+    Boolean(defaults && MODULE_BY_ID.get('optics').settingsKeys.some(key => key in s && key in defaults && !sameSetting(s[key], defaults[key])))
   );
   if (usedOptics) detected.add('optics');
   if (s.multiAccount === true || hasSavedAccounts) detected.add('accounts');

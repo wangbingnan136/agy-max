@@ -542,3 +542,49 @@ test('aux-file-tree registers unapproved host workspace via workspace.recent and
   assert.deepEqual(calls, ['workspace.listDir', 'workspace.recent', 'workspace.listDir']);
   assert.ok(findByTestId(tree, 'agy-ftree-file-row'));
 });
+
+test('aux-file-tree preserves expandedDirs across conversations in the same workspace and resets on workspace switch', async () => {
+  const repoAUpper = 'file:///C:/Projects/demo-app';
+  const repoALower = 'file:///c:/Projects/demo-app';
+  const repoB = 'file:///C:/Projects/other-app';
+  const h = createAuxTreeHarness({
+    conversationId: 'conv-1',
+    workspaceUri: repoAUpper,
+    async requestHandler(method, payload) {
+      if (method === 'workspace.listDir') {
+        if (payload.relPath === 'src') {
+          return {
+            ok: true,
+            entries: [{ name: 'index.ts', relPath: 'src/index.ts', uri: `${payload.rootUri}/src/index.ts`, isDirectory: false }]
+          };
+        }
+        return {
+          ok: true,
+          entries: [{ name: 'src', relPath: 'src', uri: `${payload.rootUri}/src`, isDirectory: true }]
+        };
+      }
+      return { ok: true };
+    }
+  });
+  h.auxTree.sync({ enabled: true });
+  let tree = await h.render();
+  const dirRow1 = findByTestId(tree, 'agy-ftree-dir-row');
+  assert.equal(dirRow1.props['aria-expanded'], false);
+
+  // Expand src/ in conv-1
+  dirRow1.props.onClick();
+  tree = await h.render();
+  assert.equal(findByTestId(tree, 'agy-ftree-dir-row').props['aria-expanded'], true);
+  assert.match(collectText(findByTestId(tree, 'agy-ftree-file-row')), /index\.ts/);
+
+  // Switch to conv-2 in the SAME workspace (even with lowercase Windows drive letter) -> stays expanded
+  h.setConversation('conv-2', repoALower);
+  tree = await h.render();
+  assert.equal(findByTestId(tree, 'agy-ftree-dir-row').props['aria-expanded'], true);
+  assert.match(collectText(findByTestId(tree, 'agy-ftree-file-row')), /index\.ts/);
+
+  // Switch to conv-3 in a DIFFERENT workspace -> resets expandedDirs cleanly
+  h.setConversation('conv-3', repoB);
+  tree = await h.render();
+  assert.equal(findByTestId(tree, 'agy-ftree-dir-row').props['aria-expanded'], false);
+});

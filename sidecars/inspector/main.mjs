@@ -6,7 +6,7 @@ import { startNativeIntegration } from '../../lib/native-host.mjs';
 import { serveRuntime } from '../../lib/runtime-control.mjs';
 import { installationPaths } from '../../lib/lifecycle.mjs';
 import { createSettingsStore } from '../../lib/settings.mjs';
-import { configureLaunchers, isRemoteSshEnvironment, manualLaunchCommand, maybePromptPostUpdateRelaunch, scheduleRelaunchWithDebugPort } from '../../lib/launcher.mjs';
+import { clearAutoRelaunchAttempt, configureLaunchers, hasCustomLauncher, isRemoteSshEnvironment, manualLaunchCommand, maybePromptPostUpdateRelaunch, scheduleRelaunchWithDebugPort } from '../../lib/launcher.mjs';
 import { startSidecarWebUi } from '../../lib/sidecar-ui.mjs';
 import { DEFAULT_PROXY_BYPASS } from '../../lib/proxy.mjs';
 import { checkForUpdates } from '../../lib/updates.mjs';
@@ -34,29 +34,41 @@ if (isMain()) {
   const paths = installationPaths();
   const settings = createSettingsStore();
   const remoteSsh = isRemoteSshEnvironment();
-  let missingPortPolls = 0, shortcutsHealed = false, everConnectedDebugPort = false;
+  let missingPortPolls = 0, shortcutsHealed = false, everConnectedDebugPort = false, shuttingDown = false;
+  let cancelPostUpdatePrompt = null;
+  const dismissPostUpdatePrompt = () => {
+    try { cancelPostUpdatePrompt?.(); } catch {}
+    cancelPostUpdatePrompt = null;
+  };
   const stop = startNativeIntegration({
     parseSessionData,
     onDebugPortReady() {
       everConnectedDebugPort = true;
       missingPortPolls = 0;
+      dismissPostUpdatePrompt();
+      try { clearAutoRelaunchAttempt(paths.data); } catch {}
     },
     onMissingDebugPort() {
-      if (remoteSsh || everConnectedDebugPort) return;
+      if (shuttingDown || remoteSsh || everConnectedDebugPort) return;
       missingPortPolls++;
       if (!shortcutsHealed) {
         shortcutsHealed = true;
-        try { configureLaunchers({ home: paths.home, dataDir: paths.data }); } catch {}
+        if (!hasCustomLauncher(paths.data)) {
+          try { configureLaunchers({ home: paths.home, dataDir: paths.data }); } catch {}
+        }
       }
-      if (missingPortPolls >= 2) {
+      if (missingPortPolls >= 3) {
         const current = settings.get();
         if (current.enabled !== false) {
-          maybePromptPostUpdateRelaunch({
+          const promptRes = maybePromptPostUpdateRelaunch({
             dataDir: paths.data,
             installDir: paths.installed,
             language: current.language || 'zh-CN',
             home: paths.home
           });
+          if (typeof promptRes?.cancel === 'function') {
+            cancelPostUpdatePrompt = promptRes.cancel;
+          }
         }
       }
     }
@@ -92,6 +104,8 @@ if (isMain()) {
   });
   let stopping;
   function shutdown(options) {
+    shuttingDown = true;
+    dismissPostUpdatePrompt();
     stopping ??= Promise.resolve().then(async () => {
       try { await stop(options); } finally { await closeWebUi(); }
     });

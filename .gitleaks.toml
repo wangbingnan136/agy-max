@@ -1,0 +1,10 @@
+title = "Antigravity Max Gitleaks Config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Public Chrome Translate wt_lib client identifier (not a private credential)"
+fingerprints = [
+  "648cfd4041766d27543385d54025d8f39986f8a3:lib/translator.mjs:gcp-api-key:12",
+]

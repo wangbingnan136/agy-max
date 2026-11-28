@@ -585,3 +585,173 @@ test('Settings & Page persist tab memory in localStorage, render 4-protocol AI p
 
   uiCtx.__agyPowertools.dispose();
 });
+
+test('Settings enforces two-step confirmation on reset and supports cross-category keyword search', () => {
+  const storage = new Map([['agy-max:settings-cat', 'telemetry']]);
+  const localStorage = {
+    getItem: k => (storage.has(k) ? storage.get(k) : null),
+    setItem: (k, v) => storage.set(k, String(v))
+  };
+  let states = [];
+  let cursor = 0;
+  const h = (type, props, ...children) => ({ type, props: props || {}, children: children.flat(Infinity).filter(c => c != null && c !== false) });
+  const R = {
+    createElement: h,
+    Fragment: ({ children }) => children,
+    useState(init) {
+      const idx = cursor++;
+      if (!(idx in states)) states[idx] = typeof init === 'function' ? init() : init;
+      return [states[idx], v => { states[idx] = typeof v === 'function' ? v(states[idx]) : v; }];
+    },
+    useSyncExternalStore: (_s, g) => g(),
+    useEffect() {},
+    useRef: v => ({ current: v })
+  };
+  const expand = node => {
+    if (!node || typeof node !== 'object') return node;
+    if (Array.isArray(node)) return node.map(expand);
+    if (typeof node.type === 'function') return expand(node.type({ ...(node.props || {}), children: node.children }));
+    return { ...node, children: (node.children || []).map(expand) };
+  };
+  const renderTree = (Comp, props = {}) => { cursor = 0; return expand(Comp(props)); };
+  const findByTestId = (node, id) => {
+    if (!node || typeof node !== 'object') return null;
+    if (Array.isArray(node)) {
+      for (const item of node) { const f = findByTestId(item, id); if (f) return f; }
+      return null;
+    }
+    if (node.props?.['data-testid'] === id) return node;
+    for (const ch of node.children || []) { const f = findByTestId(ch, id); if (f) return f; }
+    return null;
+  };
+  const SimpleWrap = ({ children, ...rest }) => h('div', rest, ...(Array.isArray(children) ? children : [children]));
+  const panelCtx = vm.createContext({
+    React: R,
+    localStorage,
+    setTimeout,
+    clearTimeout,
+    document: { head: { append() {} }, createElement: () => ({ dataset: {}, style: {}, setAttribute() {}, remove() {} }) },
+    HC: SimpleWrap, IC: SimpleWrap, JC: SimpleWrap, KC: SimpleWrap, GC: SimpleWrap,
+    Uy: ({ children, ...p }) => h('button', p, ...(Array.isArray(children) ? children : [children])),
+    XP: p => h('input', { type: 'checkbox', ...p }),
+    UP: ({ label, description, rightElement, ...p }) => h('div', p, label, description, rightElement),
+    TP: SimpleWrap, VP: SimpleWrap,
+    dq: ({ name }) => h('span', null, name),
+    k0: SimpleWrap, Sy: SimpleWrap,
+    kT: SimpleWrap, lT: SimpleWrap, mT: SimpleWrap, nT: SimpleWrap
+  });
+  vm.runInContext(prismPanelsSource, panelCtx);
+  vm.runInContext(panelsSource, panelCtx);
+
+  const defaults = { enabled: true, language: 'zh-CN', keepOverviewOpen: true, proxyEnabled: false, composerQuota: false };
+  let curOpts = { ...defaults, composerQuota: true };
+  const changes = [];
+  const panels = panelCtx.__agyPanels({
+    t: s => s,
+    version: '1.4.3',
+    defaults,
+    hasModuleCenter: true,
+    hasModule: () => true,
+    activeModuleCount: () => 8,
+    modules: () => [],
+    options: () => curOpts,
+    state: () => ({ contextWindow: { maxTokens: 200000 } }),
+    dashboard: () => null,
+    account: () => null,
+    estimates: () => [],
+    settingsError: () => '',
+    change: patch => { changes.push(patch); curOpts = { ...curOpts, ...patch }; },
+    loadDashboard: async () => {},
+    betaProviders: () => [],
+    subscribe: () => () => {},
+    revision: () => 1
+  });
+
+  // 1. Two-step reset confirmation prevents accidental one-click wipe
+  let tree = renderTree(panels.Settings);
+  const resetBtn1 = findByTestId(tree, 'agy-settings-reset-btn');
+  assert.ok(resetBtn1);
+  assert.equal(resetBtn1.props['data-confirm'], undefined);
+  resetBtn1.props.onClick();
+  assert.equal(changes.length, 0, 'first click must only arm confirmation');
+
+  tree = renderTree(panels.Settings);
+  assert.equal(findByTestId(tree, 'agy-settings-reset-btn').props['data-confirm'], 'true');
+  const cancelBtn = findByTestId(tree, 'agy-settings-reset-cancel');
+  assert.ok(cancelBtn, 'armed state should show cancel button');
+  cancelBtn.props.onClick();
+  assert.equal(changes.length, 0, 'canceling reset must not apply defaults');
+
+  tree = renderTree(panels.Settings);
+  assert.equal(findByTestId(tree, 'agy-settings-reset-btn').props['data-confirm'], undefined);
+  findByTestId(tree, 'agy-settings-reset-btn').props.onClick();
+  tree = renderTree(panels.Settings);
+  findByTestId(tree, 'agy-settings-reset-btn').props.onClick();
+  assert.equal(changes.length, 1, 'second click confirms and restores defaults');
+  assert.deepEqual(JSON.parse(JSON.stringify(changes[0])), defaults);
+
+  // 2. Typing into settings search expands across categories (excluding About release notes)
+  tree = renderTree(panels.Settings);
+  const searchInput = findByTestId(tree, 'agy-settings-search');
+  assert.ok(searchInput);
+  searchInput.props.onChange({ target: { value: '代理' } });
+  tree = renderTree(panels.Settings);
+  assert.equal(findByTestId(tree, 'agy-settings-sections').props['data-searching'], 'true');
+  assert.ok(findByTestId(tree, 'agy-setting-row-proxyEnabled'), 'cross-category search exposes proxy section');
+  assert.ok(findByTestId(tree, 'agy-setting-row-keepOverviewOpen'), 'cross-category search exposes display section');
+  assert.equal(findByTestId(tree, 'agy-setting-row-project'), null, 'search excludes About updates card');
+  assert.ok(findByTestId(tree, 'agy-settings-search-clear'));
+
+  // Escape clears search back to active category
+  findByTestId(tree, 'agy-settings-search').props.onKeyDown({ key: 'Escape', stopPropagation() {} });
+  tree = renderTree(panels.Settings);
+  assert.equal(findByTestId(tree, 'agy-settings-sections').props['data-searching'], undefined);
+  assert.equal(findByTestId(tree, 'agy-setting-row-proxyEnabled'), null);
+
+  // 3. DOM search filter accurately matches multi-token queries, hides non-matching rows/sections, and resets cleanly
+  const makeEl = (attrs = {}, textContent = '', children = []) => {
+    const map = new Map(Object.entries(attrs));
+    return {
+      children,
+      textContent,
+      getAttribute: k => map.get(k) ?? null,
+      setAttribute: (k, v) => map.set(k, String(v)),
+      removeAttribute: k => map.delete(k),
+      querySelector: sel => {
+        if (sel === '.agy-card') return children.find(c => c.getAttribute('class') === 'agy-card') || null;
+        if (sel === '[data-testid^="agy-setting-row-"]') return children.find(c => String(c.getAttribute('data-testid') || '').startsWith('agy-setting-row-')) || null;
+        return null;
+      }
+    };
+  };
+  const rowBell = makeEl({ 'data-testid': 'agy-setting-row-sidebarFocusBell' }, '侧栏运行中会话铃铛 展开优先事项');
+  const rowTint = makeEl({ 'data-testid': 'agy-setting-row-userBubbleTint' }, '用户消息气泡着色 气泡底色');
+  const cardDisplay = makeEl({ class: 'agy-card' }, '', [rowBell, rowTint]);
+  const secDisplay = makeEl({ 'data-agy-settings-section': '界面与显示' }, '', [cardDisplay]);
+
+  const rowProxy = makeEl({ 'data-testid': 'agy-setting-row-proxyEnabled' }, '启用本地代理 HTTP SOCKS5');
+  const cardProxy = makeEl({ class: 'agy-card' }, '', [rowProxy]);
+  const secProxy = makeEl({ 'data-agy-settings-section': '网络代理' }, '', [cardProxy]);
+
+  const allNodes = [secDisplay, cardDisplay, rowBell, rowTint, secProxy, cardProxy, rowProxy];
+  const mockRoot = {
+    querySelectorAll: sel => {
+      if (sel === '[data-agy-search-hidden="1"]') return allNodes.filter(n => n.getAttribute('data-agy-search-hidden') === '1');
+      if (sel === '[data-agy-settings-section]') return [secDisplay, secProxy];
+      return [];
+    }
+  };
+
+  assert.equal(panels.applySettingsSearchDom(mockRoot, '侧栏 铃铛'), 1);
+  assert.equal(rowBell.getAttribute('data-agy-search-hidden'), null);
+  assert.equal(rowTint.getAttribute('data-agy-search-hidden'), '1');
+  assert.equal(secDisplay.getAttribute('data-agy-search-hidden'), null);
+  assert.equal(secProxy.getAttribute('data-agy-search-hidden'), '1');
+
+  assert.equal(panels.applySettingsSearchDom(mockRoot, '不存在的关键词xyz'), 0);
+  assert.equal(secDisplay.getAttribute('data-agy-search-hidden'), '1');
+  assert.equal(secProxy.getAttribute('data-agy-search-hidden'), '1');
+
+  assert.equal(panels.applySettingsSearchDom(mockRoot, ''), null);
+  assert.equal(allNodes.every(n => n.getAttribute('data-agy-search-hidden') == null), true);
+});

@@ -200,24 +200,33 @@
         }
       }, [nativeWsUri, uiText]);
 
+      const activeWsKey = uriKey(activeWsUri) || '';
       const prevSessionRef = R.useRef(sessionKey);
+      const prevWsKeyRef = R.useRef(activeWsKey);
       R.useEffect(() => {
         const prevKey = prevSessionRef.current;
-        if (prevKey === sessionKey) return;
+        if (prevKey === sessionKey) {
+          prevWsKeyRef.current = activeWsKey;
+          return;
+        }
         prevSessionRef.current = sessionKey;
         if (prevKey.startsWith('__home__:') && conversationId && !mountedWorkspaces.has(sessionKey) && !nativeWsUri && mountedWorkspaces.has(prevKey)) {
-          mountedWorkspaces.set(sessionKey, mountedWorkspaces.get(prevKey));
+          const carriedUri = mountedWorkspaces.get(prevKey);
+          mountedWorkspaces.set(sessionKey, carriedUri);
+          prevWsKeyRef.current = uriKey(carriedUri) || '';
           setChoosingFolder(false);
           bump();
           return;
         }
+        const sameWorkspace = Boolean(prevWsKeyRef.current && activeWsKey && prevWsKeyRef.current === activeWsKey);
+        prevWsKeyRef.current = activeWsKey;
         setPreview(null);
         setDraft(null);
         setFilterQuery('');
         setSearchEntries(null);
         setChoosingFolder(false);
-        setExpandedDirs(new Set());
-      }, [conversationId, nativeWsUri, sessionKey]);
+        if (!sameWorkspace) setExpandedDirs(new Set());
+      }, [activeWsKey, conversationId, nativeWsUri, sessionKey]);
 
       R.useEffect(() => {
         if (activeWsUri && !choosingFolder) {
@@ -248,6 +257,7 @@
           const res = await env.request('workspace.mount', { uri });
           const nextUri = res?.uri || uri;
           mountedWorkspaces.set(sessionKey, nextUri);
+          prevWsKeyRef.current = uriKey(nextUri) || '';
           setChoosingFolder(false);
           setPreview(null);
           setFilterQuery('');
@@ -263,6 +273,7 @@
           const res = await env.request('workspace.pickFolder');
           if (res?.cancelled || !res?.uri) return;
           mountedWorkspaces.set(sessionKey, res.uri);
+          prevWsKeyRef.current = uriKey(res.uri) || '';
           setChoosingFolder(false);
           setPreview(null);
           setFilterQuery('');

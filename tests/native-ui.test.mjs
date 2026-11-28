@@ -1726,3 +1726,163 @@ test('mounts full Antigravity Max panel in right-sidebar plugin slot without inj
   assert.equal(mountedRoots[0].unmounted, true);
   assert.equal(slotAttrs.has('data-agy-max-aux-host'), false);
 });
+
+test('keepOverviewOpen preserves aux pane between existing chats, never auto-opens on new blank chats, and ignores Max sidecar-only tab', async () => {
+  const p = page(true);
+  p.context.setTimeout = setTimeout;
+  p.context.clearTimeout = clearTimeout;
+  p.context.location = { pathname: '/c/chat-a', search: '' };
+  p.context.URLSearchParams = URLSearchParams;
+
+  const routerListeners = new Map();
+  let auxOpen = true;
+  let overviewVisible = true;
+  let maxSidecarVisible = false;
+  let toggleAuxCalls = 0;
+
+  p.document.querySelector = sel => {
+    if (sel.includes('data-side-panel-open="true"')) return auxOpen ? {} : null;
+    if (sel.includes('data-agy-max-aux-host')) return maxSidecarVisible ? {} : null;
+    if (sel === '[data-testid="overview-panel"]') return overviewVisible ? {} : null;
+    return null;
+  };
+
+  p.context.__agyNativeAdapter = {
+    wrap: el => el,
+    installPage: () => true,
+    toggleAuxPane: () => { toggleAuxCalls++; auxOpen = !auxOpen; return true; },
+    router: () => ({
+      subscribe(ev, fn) {
+        if (!routerListeners.has(ev)) routerListeners.set(ev, []);
+        routerListeners.get(ev).push(fn);
+        return () => {};
+      }
+    })
+  };
+  p.context.__agyPanels = () => ({ Page: () => null, Sidebar: () => null, dispose() {} });
+  p.context.__agyInitialSettings = { enabled: true, keepOverviewOpen: true };
+  p.context.__agyPowertoolsHost = raw => {
+    const req = JSON.parse(raw);
+    queueMicrotask(() => p.context.__agyPowertoolsReceive?.(req.id, req.method === 'settings.get' ? { enabled: true, keepOverviewOpen: true } : {}));
+  };
+
+  vm.runInContext(source, p.context);
+  await new Promise(r => setTimeout(r, 15));
+
+  const navigate = async (pathname, search, nextAuxOpen, nextOverview, nextMaxSidecar) => {
+    for (const fn of routerListeners.get('onBeforeNavigate') || []) {
+      fn({ toLocation: { pathname, searchStr: search } });
+    }
+    p.context.location.pathname = pathname;
+    p.context.location.search = search;
+    auxOpen = nextAuxOpen;
+    overviewVisible = nextOverview;
+    maxSidecarVisible = nextMaxSidecar;
+    for (const fn of routerListeners.get('onResolved') || []) fn();
+    await new Promise(r => setTimeout(r, 15));
+  };
+
+  // 1. Clicking new-conversation from an open-Overview chat must NOT force-open sidebar on '/'
+  for (const fn of p.callbacks.get('click') || []) {
+    fn({ type: 'click', target: { closest: sel => sel.includes('new-conversation') ? { getAttribute: () => '/?project=p1' } : null } });
+  }
+  await navigate('/', '?project=p1', false, false, false);
+  assert.equal(toggleAuxCalls, 0, 'new conversation route must not auto-open right sidebar');
+
+  // 2. Sending the first message from a closed new-chat draft into /c/chat-fresh keeps sidebar closed
+  await navigate('/c/chat-fresh', '', false, false, false);
+  assert.equal(toggleAuxCalls, 0, 'fresh chat created from closed draft must keep sidebar closed');
+
+  // 3. Existing chat with Overview open -> another existing chat DOES carry Overview open
+  auxOpen = true;
+  overviewVisible = true;
+  for (const fn of p.callbacks.get('click') || []) {
+    fn({ type: 'click', target: { closest: sel => sel === 'a[href^="/c/"]' ? { getAttribute: () => '/c/chat-b' } : null } });
+  }
+  await navigate('/c/chat-b', '', false, false, false);
+  assert.equal(toggleAuxCalls, 1, 'switching between existing chats should carry open Overview');
+
+  // 4. Existing chat where ONLY Antigravity Max sidecar tab is visible does NOT carry open state into /c/chat-c
+  auxOpen = true;
+  overviewVisible = false;
+  maxSidecarVisible = true;
+  for (const fn of p.callbacks.get('click') || []) {
+    fn({ type: 'click', target: { closest: sel => sel === 'a[href^="/c/"]' ? { getAttribute: () => '/c/chat-c' } : null } });
+  }
+  await navigate('/c/chat-c', '', false, false, false);
+  assert.equal(toggleAuxCalls, 1, 'Max sidecar-only right pane must not auto-open sidebar on next chat');
+
+  p.context.__agyPowertools.dispose();
+});
+
+test('sidebar bell closes Priority panel without navigating away and supports Shift-click quiet open', async () => {
+  const p = page(true);
+  p.context.location.pathname = '/c/chat-reading';
+  const renderedTrees = new Map();
+  const navigated = [];
+  p.context.React = {
+    createElement: (type, props, ...children) => ({ type, props: props || {}, children }),
+    useSyncExternalStore: (_sub, snap) => snap(),
+    useEffect: () => {},
+    useRef: v => ({ current: v })
+  };
+  p.context.ReactDOM = {
+    createRoot(mount) {
+      return {
+        render(el) { renderedTrees.set(mount.dataset.agyPowertoolsRoot, el); },
+        unmount() { renderedTrees.delete(mount.dataset.agyPowertoolsRoot); }
+      };
+    }
+  };
+  p.context.__agyNativeAdapter = {
+    wrap: el => el,
+    installPage: () => true,
+    onEditChange: () => () => {},
+    onGoalDetected: () => () => {},
+    router: () => ({ navigate: async opts => { navigated.push(opts); } }),
+    conversationDirectory: () => ({
+      running: [{ id: 'run-bg', title: 'Background Task', projectId: 'p1', projectName: 'proj', updatedAtMs: 2000 }],
+      unread: [],
+      projects: [],
+      byId: { 'run-bg': { id: 'run-bg', title: 'Background Task', projectId: 'p1', projectName: 'proj', running: true, updatedAtMs: 2000 } },
+      subagentIds: []
+    })
+  };
+  p.context.__agyPanels = () => ({ Page: () => null, Sidebar: () => null, dispose() {} });
+  p.context.__agyPowertoolsHost = raw => {
+    const req = JSON.parse(raw);
+    queueMicrotask(() => p.context.__agyPowertoolsReceive?.(req.id, req.method === 'settings.get' ? { enabled: true, sidebarFocusBell: true } : {}));
+  };
+  const headerRow = { insertBefore(child) { child.isConnected = true; } };
+  const searchBtn = { isConnected: true, parentElement: headerRow, nextSibling: null };
+  const navBlock = { isConnected: true, parentElement: { insertBefore(child) { child.isConnected = true; } }, nextSibling: null };
+  const sidebarEl = { querySelector: sel => sel.includes('Search') ? searchBtn : sel === '[data-testid="sidebar-navigation-items"]' ? navBlock : null };
+  p.context.getComputedStyle = () => ({ display: 'flex' });
+  p.document.querySelector = sel => sel.includes('Open Conversation Picker') ? searchBtn : sel.includes('Sidebar') ? sidebarEl : null;
+  p.context.__agyInitialSettings = { enabled: true, sidebarFocusBell: true };
+
+  vm.runInContext(source, p.context);
+  await new Promise(r => setTimeout(r, 10));
+
+  const renderBell = () => {
+    const t = renderedTrees.get('sidebar-bell');
+    return t.type(t.props);
+  };
+
+  // Shift+click opens Priority quietly without navigating away
+  renderBell().props.onClick({ shiftKey: true, preventDefault() {}, stopPropagation() {} });
+  assert.equal(navigated.length, 0, 'Shift-click should open Priority without jumping away');
+  assert.equal(renderBell().props['aria-pressed'], true);
+
+  // Clicking bell again to CLOSE Priority must NEVER navigate away even when active chat != running[0]
+  renderBell().props.onClick({ preventDefault() {}, stopPropagation() {} });
+  assert.equal(navigated.length, 0, 'closing Priority panel must not hijack current conversation');
+  assert.equal(renderBell().props['aria-pressed'], false);
+
+  // Plain click when closed opens Priority and jumps to running session as designed
+  renderBell().props.onClick({ preventDefault() {}, stopPropagation() {} });
+  assert.equal(navigated.length, 1);
+  assert.equal(navigated[0].params.cascadeId, 'run-bg');
+
+  p.context.__agyPowertools.dispose();
+});

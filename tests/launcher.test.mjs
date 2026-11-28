@@ -16,6 +16,10 @@ import {
   restoreLaunchers,
   resolveAntigravityExecutable,
   manualLaunchCommand,
+  clearAutoRelaunchAttempt,
+  hasCustomLauncher,
+  maybePromptPostUpdateRelaunch,
+  readPostUpdateMode,
   shouldPromptPostUpdate,
   scheduleRelaunchWithDebugPort,
   isRemoteSshEnvironment,
@@ -231,6 +235,127 @@ test('executable discovery, post-update prompt guards, and relaunch scheduling p
     assert.ok(psBody.includes('Remove-Item -LiteralPath $PSCommandPath'));
     assert.equal(shouldPromptPostUpdate({ dataDir, installDir, env: { ANTIGRAVITY_LS_ADDRESS: '127.0.0.1:5000' }, now: now + 1000 }).prompt, false);
     assert.equal(shouldPromptPostUpdate({ dataDir, installDir, env: { ANTIGRAVITY_LS_ADDRESS: '127.0.0.1:6000' }, now: now + 1000 }).reason, 'cooldown');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('postUpdateMode supports silent suppression, zero-popup auto relaunch, and cancellable prompt dialogs', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agy-post-update-mode-'));
+  try {
+    const appRoot = join(root, 'Programs', 'antigravity');
+    const binDir = join(appRoot, 'resources', 'bin');
+    mkdirSync(binDir, { recursive: true });
+    const exe = join(appRoot, 'Antigravity.exe');
+    const lsExe = join(binDir, 'language_server.exe');
+    writeFileSync(exe, '');
+    writeFileSync(lsExe, '');
+
+    const installDir = join(root, 'installed');
+    const dataDir = join(root, 'data');
+    mkdirSync(installDir, { recursive: true });
+    mkdirSync(dataDir, { recursive: true });
+    const receipt = join(installDir, '.agy-install.json');
+    writeFileSync(receipt, '{}');
+    const oldDate = new Date(Date.now() - 10 * 60 * 1000);
+    utimesSync(receipt, oldDate, oldDate);
+
+    // 1. silent mode suppresses prompt completely
+    writeFileSync(join(dataDir, 'launcher-config.json'), JSON.stringify({ postUpdateMode: 'silent' }));
+    assert.equal(readPostUpdateMode(dataDir), 'silent');
+    assert.equal(shouldPromptPostUpdate({ dataDir, installDir, env: { ANTIGRAVITY_LS_ADDRESS: '127.0.0.1:5001' } }).reason, 'suppressed-by-config');
+    const silentRes = maybePromptPostUpdateRelaunch({
+      dataDir,
+      installDir,
+      platform: 'win32',
+      home: root,
+      env: { ANTIGRAVITY_LS_ADDRESS: '127.0.0.1:5001', ANTIGRAVITY_AGENTAPI_EXE: lsExe }
+    });
+    assert.equal(silentRes.prompted, false);
+    assert.equal(silentRes.reason, 'suppressed-by-config');
+
+    // 2. auto mode triggers relaunch once per host binary signature without spawning any modal popup
+    writeFileSync(join(dataDir, 'launcher-config.json'), JSON.stringify({ postUpdateMode: 'auto' }));
+    let relaunchCalls = 0;
+    let spawnCalls = 0;
+    const autoRes = maybePromptPostUpdateRelaunch({
+      dataDir,
+      installDir,
+      platform: 'win32',
+      home: root,
+      now: Date.now() + 20 * 60 * 1000,
+      env: { ANTIGRAVITY_LS_ADDRESS: '127.0.0.1:5002', ANTIGRAVITY_AGENTAPI_EXE: lsExe },
+      relaunch() { relaunchCalls++; return { scheduled: true }; },
+      spawnProcess() { spawnCalls++; return { on() {}, kill() {}, unref() {} }; }
+    });
+    assert.equal(autoRes.prompted, false);
+    assert.equal(autoRes.autoRelaunched, true);
+    assert.equal(relaunchCalls, 1);
+    assert.equal(spawnCalls, 0);
+
+    // Second auto attempt after cooldown for the SAME binary signature must NOT loop
+    const autoRepeat = maybePromptPostUpdateRelaunch({
+      dataDir,
+      installDir,
+      platform: 'win32',
+      home: root,
+      now: Date.now() + 40 * 60 * 1000,
+      env: { ANTIGRAVITY_LS_ADDRESS: '127.0.0.1:5002b', ANTIGRAVITY_AGENTAPI_EXE: lsExe },
+      relaunch() { relaunchCalls++; return { scheduled: true }; },
+      spawnProcess() { spawnCalls++; return { on() {}, kill() {}, unref() {} }; }
+    });
+    assert.equal(autoRepeat.autoRelaunched, false);
+    assert.equal(autoRepeat.reason, 'auto-relaunch-already-attempted');
+    assert.equal(relaunchCalls, 1);
+
+    // Clearing the attempt after a healthy CDP session allows future auto relaunch
+    clearAutoRelaunchAttempt(dataDir);
+    const autoAfterHealthy = maybePromptPostUpdateRelaunch({
+      dataDir,
+      installDir,
+      platform: 'win32',
+      home: root,
+      now: Date.now() + 60 * 60 * 1000,
+      env: { ANTIGRAVITY_LS_ADDRESS: '127.0.0.1:5002c', ANTIGRAVITY_AGENTAPI_EXE: lsExe },
+      relaunch() { relaunchCalls++; return { scheduled: true }; },
+      spawnProcess() { spawnCalls++; return { on() {}, kill() {}, unref() {} }; }
+    });
+    assert.equal(autoAfterHealthy.autoRelaunched, true);
+    assert.equal(relaunchCalls, 2);
+
+    // WSL ignores Linux customLauncher in hasCustomLauncher()
+    const linuxBin = join(root, 'custom-bin.sh');
+    writeFileSync(linuxBin, '#!/bin/sh\n');
+    writeFileSync(join(dataDir, 'launcher-config.json'), JSON.stringify({ customLauncher: { command: linuxBin, args: [] }, postUpdateMode: 'prompt' }));
+    assert.equal(hasCustomLauncher(dataDir, { platform: 'linux', wsl: true }), false);
+
+    // 3. default prompt mode returns a cancel() handle that kills the dialog and suppresses exit-code relaunch
+    let killed = false;
+    let exitHandler = null;
+    const promptRes = maybePromptPostUpdateRelaunch({
+      dataDir,
+      installDir,
+      platform: 'win32',
+      home: root,
+      now: Date.now() + 85 * 60 * 1000,
+      env: { ANTIGRAVITY_LS_ADDRESS: '127.0.0.1:5003', ANTIGRAVITY_AGENTAPI_EXE: lsExe },
+      relaunch() { relaunchCalls++; return { scheduled: true }; },
+      spawnProcess() {
+        spawnCalls++;
+        return {
+          on(ev, fn) { if (ev === 'exit') exitHandler = fn; },
+          kill() { killed = true; },
+          unref() {}
+        };
+      }
+    });
+    assert.equal(promptRes.prompted, true);
+    assert.equal(typeof promptRes.cancel, 'function');
+    assert.equal(spawnCalls, 1);
+    promptRes.cancel();
+    assert.equal(killed, true);
+    exitHandler?.(10);
+    assert.equal(relaunchCalls, 2, 'Canceled prompt must not relaunch on exit');
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

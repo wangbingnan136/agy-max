@@ -576,8 +576,9 @@ test('Effort Slider mounts star ticks, auto-yields to .ces-slider, renders Orche
   const xhighTick = slider.querySelector('[data-testid="agy-effort-tick-xhigh"]');
   assert.equal(xhighTick.style.left, 'calc(12px + (100% - 24px) * 1.0000)');
   const wbStyle = document.querySelector('style[data-agy-workbench-style="1"]')?.textContent || '';
-  assert.ok(wbStyle.includes('transition:left 220ms cubic-bezier(.22,1,.36,1)'));
-  assert.ok(wbStyle.includes('transition:width 220ms cubic-bezier(.22,1,.36,1)'));
+  assert.ok(wbStyle.includes('@property --agy-max-reveal'), 'Codex Max aurora reveal @property should be injected');
+  assert.ok(wbStyle.includes('@keyframes agy-particle-burst'), 'Codex Max 16-particle burst keyframes should be injected');
+  assert.ok(wbStyle.includes('mix-blend-mode:luminosity'), 'Codex WebGL luminosity blend mode should be injected');
   assert.equal(slider.hasAttribute('data-dragging'), false);
   xhighTick.click();
   assert.equal(slider.hasAttribute('data-dragging'), false);
@@ -734,6 +735,7 @@ test('Effort Slider reads real Antigravity React Fiber context without DOM effor
   assert.equal(document.documentElement.getAttribute('data-agy-effort-slider-ready'), '1');
   assert.equal(slider.querySelector('.agy-codex-model-name')?.textContent, 'Gemini 4 Neon');
   assert.equal(slider.querySelector('.agy-effort-val')?.textContent, '高');
+  assert.equal(triggerEffSpan.hasAttribute('data-agy-effort-max'), false, 'Non-Max effort on 4-stop model must not mark trigger as Max');
   assert.equal(slider.querySelectorAll('.agy-effort-tick').length, 4);
 
   // Track click (pointerdown + pointerup without >4px move) keeps transition enabled (no data-dragging jump!)
@@ -750,6 +752,7 @@ test('Effort Slider reads real Antigravity React Fiber context without DOM effor
   });
   assert.equal(slider.querySelector('.agy-effort-val')?.textContent, '极高');
   assert.equal(triggerEffSpan.getAttribute('data-agy-effort-display'), ' 极高');
+  assert.equal(triggerEffSpan.getAttribute('data-agy-effort-max'), '1', 'Max effort must colorize the composer trigger effort label');
   assert.equal(JSON.parse(localStorage.getItem('agy.effortMemory.v1'))['gemini 4 neon'], 'xhigh');
 
   // Click top "Gemini 4 Neon >" header button -> transitions into Stage 2 ('models' list: 选择模型)
@@ -758,7 +761,19 @@ test('Effort Slider reads real Antigravity React Fiber context without DOM effor
   assert.equal(trigger.getAttribute('data-agy-codex-open'), 'models');
   assert.equal(trigger.hasAttribute('data-agy-effort-prompt'), false);
 
-  // Click Claude row in Stage 2 ('models') -> commits with keepOpen=false (closes menu like Codex)
+  // Stage 2 renders a clean back button (no extra effort badge) that returns to Stage 1 ('effort' slider)
+  const backBtn = panel.querySelector('[data-testid="agy-effort-back-to-slider"]');
+  assert.ok(backBtn, 'Stage 2 models list should render a back button to return to effort slider');
+  assert.equal(backBtn.querySelector('.agy-codex-back-badge'), null, 'Stage 2 back button must not show an effort badge');
+  assert.equal(backBtn.querySelector('.agy-codex-back-label')?.textContent, '返回推理强度');
+  assert.equal(backBtn.hasAttribute('data-max'), false);
+  backBtn.click();
+  assert.equal(panel.getAttribute('data-agy-codex-stage'), 'effort');
+  assert.equal(trigger.getAttribute('data-agy-codex-open'), 'effort');
+
+  // Re-enter Stage 2 ('models') and click Claude row -> commits with keepOpen=false (closes menu like Codex)
+  slider.querySelector('[data-testid="agy-effort-open-models"]').click();
+  assert.equal(panel.getAttribute('data-agy-codex-stage'), 'models');
   claudeRow.row.click();
   assert.equal(commitCalls.length, 2);
   assert.equal(commitCalls[1].label, 'Claude Opus 5.5 (Medium)');
@@ -779,11 +794,15 @@ test('Effort Slider reads real Antigravity React Fiber context without DOM effor
   neonRow.row.click();
   assert.equal(commitCalls[commitCalls.length - 1].label, 'Gemini 4 Neon (Extra High)');
 
+  // Closing the panel while Neon is at Extra High keeps Max color on the trigger pill, and dispose clears it
+  triggerEffSpan.textContent = ' Extra High';
   panel.remove();
   wb.sync();
   assert.equal(document.documentElement.hasAttribute('data-agy-effort-slider-ready'), false);
+  assert.equal(triggerEffSpan.getAttribute('data-agy-effort-max'), '1', 'Closed composer trigger keeps Max highlight on Extra High');
 
   wb.dispose();
+  assert.equal(triggerEffSpan.hasAttribute('data-agy-effort-max'), false, 'dispose must clear Max highlight attribute');
 });
 
 test('Effort Slider never mounts inside non-model popovers (New Project/SSH, Overview, Session Stats, or generic Settings dialogs) even when sharing global React Fiber or Low/Medium/High buttons', () => {
@@ -2021,5 +2040,203 @@ test('Model menu stays visible after the effort slider is turned off while effor
   assert.equal(document.documentElement.getAttribute('data-agy-codex-selector'), null);
   assert.equal(panel.getAttribute('data-agy-codex-stage'), null);
   assert.equal(panel.querySelector('[data-testid="agy-effort-slider"]'), null);
+  wb.dispose();
+});
+
+test('Codex PowerSlider: Max aurora/particles/burst lifecycle, wheel stepping, Home/End keys, dot hover zoom, and thumb grab-offset drag', () => {
+  const dom = createMockDom();
+  const { document } = dom;
+
+  const modelOptions = [
+    { label: 'Gemini 4 Neon (Low)', modelId: 'gemini-4-neon-low' },
+    { label: 'Gemini 4 Neon (Medium)', modelId: 'gemini-4-neon-medium' },
+    { label: 'Gemini 4 Neon (High)', modelId: 'gemini-4-neon-high' },
+    { label: 'Gemini 4 Neon (Extra High)', modelId: 'gemini-4-neon-xhigh' }
+  ];
+  let selectedModel = modelOptions[1]; // Medium
+  const fiberNode = {
+    memoizedProps: {
+      modelOptions,
+      get selectedModel() { return selectedModel; },
+      setSelectedModel(next) { selectedModel = next; },
+      setIsOpen() {}
+    },
+    return: null
+  };
+
+  const panel = document.createElement('div');
+  panel.setAttribute('data-testid', 'model-selector-panel');
+  panel['__reactFiber$test'] = fiberNode;
+  panel.appendChild(document.createElement('div'));
+  document.body.appendChild(panel);
+
+  const wb = dom.createWorkbench({ options: () => ({ enabled: true, language: 'zh-CN', effortSlider: true, effortMemory: true }) });
+  const slider = panel.querySelector('[data-testid="agy-effort-slider"]');
+  const track = slider.querySelector('[role="slider"]');
+  const fill = slider.querySelector('.agy-effort-fill');
+  const thumbMover = slider.querySelector('.agy-effort-thumb-mover');
+  const thumbAnchor = slider.querySelector('.agy-effort-thumb-anchor');
+  const particles = slider.querySelector('[data-testid="agy-effort-max-particles"]');
+  const canvas = slider.querySelector('[data-testid="agy-effort-max-canvas"]');
+
+  assert.ok(canvas, 'Max aurora WebGL canvas must be mounted');
+  assert.equal(particles.querySelectorAll('.agy-effort-max-particle').length, 14, 'Exactly 14 Codex starlight particles');
+  assert.equal(particles.getAttribute('data-active'), '0', 'Particles inactive when not at Max');
+  assert.equal(slider.querySelector('[data-testid="agy-effort-max-burst"]'), null, 'No MaxBurst on initial Medium mount');
+  assert.ok(fill.style.transform.includes('translate3d('), 'Fill uses GPU translate3d transform');
+  assert.ok(thumbMover?.style.transform.includes('translate3d('), 'Thumb mover uses GPU translate3d transform');
+  assert.equal(thumbAnchor?.style.left || '', '', 'Thumb anchor must not animate layout left property');
+
+  // Tick hover highlights corresponding dot (2x zoom hook) and clears on leave
+  const highTick = slider.querySelector('[data-testid="agy-effort-tick-high"]');
+  const highDot = slider.querySelector('.agy-effort-dot[data-dot-idx="2"]');
+  highTick.dispatchEvent({ type: 'pointerenter', bubbles: false });
+  assert.equal(highDot.getAttribute('data-hover'), '1');
+  highTick.dispatchEvent({ type: 'pointerleave', bubbles: false });
+  assert.equal(highDot.hasAttribute('data-hover'), false);
+
+  // Track pointer hover expands thumb spring target
+  track.dispatchEvent({ type: 'pointerenter', bubbles: false });
+  assert.equal(slider.getAttribute('data-thumb-expanded'), '1');
+  track.dispatchEvent({ type: 'pointerleave', bubbles: false });
+  assert.equal(slider.getAttribute('data-thumb-expanded'), '0');
+
+  // Wheel scrolling steps effort smoothly with 30px threshold (negative deltaY = scroll up = increase)
+  const wheelSmall = { type: 'wheel', deltaX: 0, deltaY: -10, deltaMode: 0, timeStamp: 1000, bubbles: true };
+  track.dispatchEvent(wheelSmall);
+  assert.equal(wheelSmall.defaultPrevented, true);
+  assert.equal(selectedModel.label, 'Gemini 4 Neon (Medium)', 'Below 30px threshold must not step yet');
+
+  const wheelStep = { type: 'wheel', deltaX: 0, deltaY: -25, deltaMode: 0, timeStamp: 1040, bubbles: true };
+  track.dispatchEvent(wheelStep);
+  assert.equal(selectedModel.label, 'Gemini 4 Neon (High)', 'Accumulated >= 30px steps Medium -> High');
+
+  // Horizontal wheel into Max triggers particles + 16-droplet MaxBurst
+  const wheelToMax = { type: 'wheel', deltaX: 35, deltaY: 0, deltaMode: 0, timeStamp: 1100, bubbles: true };
+  track.dispatchEvent(wheelToMax);
+  assert.equal(selectedModel.label, 'Gemini 4 Neon (Extra High)');
+  assert.equal(slider.getAttribute('data-max'), 'true');
+  assert.equal(particles.getAttribute('data-active'), '1');
+  const burst = slider.querySelector('[data-testid="agy-effort-max-burst"]');
+  assert.ok(burst, 'MaxBurst must trigger on active user transition into Max');
+  assert.equal(burst.childNodes.length, 16, 'Codex MaxBurst renders 16 radial particles');
+
+  // Keyboard Home jumps straight to Low and deactivates Max effects cleanly
+  track.dispatchEvent({ type: 'keydown', key: 'Home', bubbles: true });
+  assert.equal(selectedModel.label, 'Gemini 4 Neon (Low)');
+  assert.equal(slider.getAttribute('data-max'), 'false');
+  assert.equal(particles.getAttribute('data-active'), '0');
+
+  // Keyboard End jumps straight to Extra High and triggers Max effects again
+  track.dispatchEvent({ type: 'keydown', key: 'End', bubbles: true });
+  assert.equal(selectedModel.label, 'Gemini 4 Neon (Extra High)');
+  assert.equal(particles.getAttribute('data-active'), '1');
+
+  // Switching to models stage pauses/deactivates Max particle animations, and back button returns & resumes
+  slider.querySelector('[data-testid="agy-effort-open-models"]').click();
+  assert.equal(panel.getAttribute('data-agy-codex-stage'), 'models');
+  assert.equal(particles.getAttribute('data-active'), '0', 'Switching to models stage must deactivate Max effects');
+  const stageBackBtn = panel.querySelector('[data-testid="agy-effort-back-to-slider"]');
+  assert.ok(stageBackBtn, 'Back button must be mounted in Stage 2');
+  stageBackBtn.click();
+  assert.equal(panel.getAttribute('data-agy-codex-stage'), 'effort', 'Clicking back button must return to Stage 1 effort slider');
+  assert.equal(particles.getAttribute('data-active'), '1', 'Returning to Stage 1 at Max must reactivate Max particles');
+
+  // Drag directly starting from a tick button (e.g. Low tick) smoothly drags to XHigh without bailing out
+  panel.remove();
+  wb.sync();
+  dom.localStorage.removeItem('agy.effortMemory.v1');
+  selectedModel = modelOptions[0]; // Low
+  document.body.appendChild(panel);
+  wb.sync();
+  const slider2 = panel.querySelector('[data-testid="agy-effort-slider"]');
+  const track2 = slider2.querySelector('[role="slider"]');
+  const lowTick2 = slider2.querySelector('[data-testid="agy-effort-tick-low"]');
+  assert.equal(slider2.getAttribute('data-max'), 'false', 'Fresh Low mount starts non-Max');
+  track2._rectFn = () => ({ left: 0, width: 224, top: 0, height: 28 });
+  // Start pointerdown ON lowTick2 (near thumb center x=12, offset=+3) and drag right to x=215
+  lowTick2.dispatchEvent({ type: 'pointerdown', clientX: 15, pointerId: 7, bubbles: true });
+  assert.equal(slider2.hasAttribute('data-dragging'), false, 'pointerdown alone does not set data-dragging');
+  track2.dispatchEvent({ type: 'pointermove', clientX: 215, pointerId: 7, bubbles: true });
+  assert.equal(slider2.getAttribute('data-dragging'), '1', 'Dragging from thumb/tick enters dragging mode');
+  assert.equal(slider2.getAttribute('data-max'), 'true', 'Live drag preview activates Max state');
+  assert.ok(slider2.querySelector('[data-testid="agy-effort-max-burst"]'), 'Crossing into Max during drag fires MaxBurst');
+  track2.dispatchEvent({ type: 'pointerup', clientX: 215, pointerId: 7, bubbles: true });
+  assert.equal(slider2.hasAttribute('data-dragging'), false);
+  assert.equal(selectedModel.label, 'Gemini 4 Neon (Extra High)');
+
+  // Initial mount already at Max does NOT fire spurious MaxBurst
+  panel.remove();
+  wb.sync();
+  document.body.appendChild(panel);
+  wb.sync();
+  const slider3 = panel.querySelector('[data-testid="agy-effort-slider"]');
+  assert.equal(slider3.getAttribute('data-max'), 'true');
+  assert.equal(slider3.querySelector('[data-testid="agy-effort-max-burst"]'), null, 'Initial mount already at Max must not fire spurious burst');
+
+  wb.dispose();
+});
+
+test('Codex PowerSlider: deduplicates pointerup+click on ticks and prevents backward bounce under async host commits', async () => {
+  const dom = createMockDom();
+  const { document } = dom;
+
+  const modelOptions = [
+    { label: 'Gemini 4 Neon (Low)', modelId: 'gemini-4-neon-low' },
+    { label: 'Gemini 4 Neon (Medium)', modelId: 'gemini-4-neon-medium' },
+    { label: 'Gemini 4 Neon (High)', modelId: 'gemini-4-neon-high' },
+    { label: 'Gemini 4 Neon (Extra High)', modelId: 'gemini-4-neon-xhigh' }
+  ];
+  let selectedModel = modelOptions[0]; // Low
+  const commits = [];
+  const fiberNode = {
+    memoizedProps: {
+      modelOptions,
+      get selectedModel() { return selectedModel; },
+      // Simulate async React commit (does not mutate selectedModel synchronously)
+      setSelectedModel(next) { commits.push(next.label); },
+      setIsOpen() {}
+    },
+    return: null
+  };
+
+  const panel = document.createElement('div');
+  panel.setAttribute('data-testid', 'model-selector-panel');
+  panel['__reactFiber$test'] = fiberNode;
+  panel.appendChild(document.createElement('div'));
+  document.body.appendChild(panel);
+
+  const wb = dom.createWorkbench({ options: () => ({ enabled: true, language: 'zh-CN', effortSlider: true, effortMemory: true }) });
+  const slider = panel.querySelector('[data-testid="agy-effort-slider"]');
+  const track = slider.querySelector('[role="slider"]');
+  const highTick = slider.querySelector('[data-testid="agy-effort-tick-high"]');
+  const xhighTick = slider.querySelector('[data-testid="agy-effort-tick-xhigh"]');
+  track._rectFn = () => ({ left: 0, width: 224, top: 0, height: 28 });
+
+  // Simulate real browser sequence: pointerdown -> pointerup -> microtask flush -> click on tick
+  highTick.dispatchEvent({ type: 'pointerdown', clientX: 145, pointerId: 3, bubbles: true });
+  track.dispatchEvent({ type: 'pointerup', clientX: 145, pointerId: 3, bubbles: true });
+  await Promise.resolve();
+  highTick.click();
+  assert.equal(commits.length, 1, 'Tick pointerup followed by click after microtask must commit only once');
+  assert.equal(commits[0], 'Gemini 4 Neon (High)');
+
+  // Rapid second click to Extra High before first async commit lands
+  xhighTick.click();
+  assert.equal(commits.length, 2);
+  assert.equal(commits[1], 'Gemini 4 Neon (Extra High)');
+  assert.equal(slider.querySelector('.agy-effort-val')?.textContent, '极高');
+
+  // Out-of-order stale host commit from click #1 arrives (High) -> slider must NOT bounce back from XHigh
+  selectedModel = modelOptions[2]; // High
+  wb.sync();
+  assert.equal(slider.querySelector('.agy-effort-val')?.textContent, '极高', 'Stale intermediate commit must not snap slider backwards');
+  assert.equal(slider.getAttribute('data-ratio'), '1.0000');
+
+  // Target commit arrives (Extra High) -> clears pending override cleanly
+  selectedModel = modelOptions[3]; // Extra High
+  wb.sync();
+  assert.equal(slider.querySelector('.agy-effort-val')?.textContent, '极高');
+
   wb.dispose();
 });

@@ -61,7 +61,9 @@
     // Effort state
     let applyingEffortMemory = false;
     let pendingModelOverride = null;
+    let pendingModelOverrideAt = 0;
     let lastHostSelectedLabel = '';
+    let deferredWorkbenchSync = false;
     const appliedPanelModelMap = new WeakMap();
     const observedEffortPanels = new WeakSet();
     const effortControllers = new Map();
@@ -297,16 +299,12 @@
         .agy-codex-model-switch:focus-visible{outline:none!important;background:color-mix(in srgb,var(--foreground) 6.5%,transparent)!important;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--foreground) 16%,transparent)!important}
         .agy-codex-model-switch:hover .agy-codex-model-sub,.agy-codex-model-switch:focus-visible .agy-codex-model-sub{color:color-mix(in srgb,var(--foreground) 84%,transparent)}
         .agy-codex-model-switch:active{transform:scale(.98)}
-        .agy-codex-back-btn{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;margin:0 0 4px;padding:6px 10px;border:0;border-bottom:1px solid color-mix(in srgb,var(--foreground) 8%,transparent);border-radius:10px 10px 4px 4px;background:transparent;color:var(--foreground);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;outline:none!important;box-shadow:none!important;transition:background-color 140ms ease}
+        .agy-codex-back-btn{display:flex;align-items:center;justify-content:flex-start;gap:8px;width:100%;margin:0 0 4px;padding:6px 10px;border:0;border-bottom:1px solid color-mix(in srgb,var(--foreground) 8%,transparent);border-radius:10px 10px 4px 4px;background:transparent;color:var(--foreground);font:inherit;font-size:12.5px;font-weight:500;cursor:pointer;outline:none!important;box-shadow:none!important;transition:background-color 140ms ease}
         .dark .agy-codex-back-btn{border-bottom-color:rgba(255,255,255,.09)}
         .agy-codex-back-btn:focus{outline:none!important;box-shadow:none!important}
         .agy-codex-back-btn:hover,.agy-codex-back-btn:focus-visible{background:color-mix(in srgb,var(--foreground) 6%,transparent)!important;outline:none!important;box-shadow:none!important}
         .agy-codex-back-left{display:inline-flex;align-items:center;gap:5px;min-width:0;color:var(--foreground)}
         .agy-codex-back-chev{width:11px;height:11px;flex-shrink:0;opacity:.72;transform:rotate(180deg)}
-        .agy-codex-back-badge{flex-shrink:0;font-size:12px;font-weight:600;color:#0169cc}
-        .dark .agy-codex-back-badge{color:#339cff}
-        .agy-codex-back-btn[data-max="true"] .agy-codex-back-badge{color:#924ff7}
-        .dark .agy-codex-back-btn[data-max="true"] .agy-codex-back-badge{color:#ad7bf9}
         .agy-effort-val{font-size:14px;line-height:1.28;font-weight:600;color:#0169cc;transition:color 180ms cubic-bezier(.23,1,.32,1)}
         .dark .agy-effort-val{color:#339cff}
         .agy-effort-bar[data-max="true"] .agy-effort-val{color:#924ff7}
@@ -324,13 +322,13 @@
         .agy-effort-rail{position:relative;flex:1;width:100%;height:24px;border-radius:12px;overflow:hidden;background:color-mix(in srgb,var(--foreground) 10%,transparent);box-shadow:inset 0 0 0 .5px color-mix(in srgb,var(--foreground) 12%,transparent)}
         .dark .agy-effort-rail{background:rgba(255,255,255,.12);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14)}
         .agy-effort-bar[data-locked="true"] .agy-effort-rail{background-image:repeating-linear-gradient(135deg,color-mix(in srgb,var(--foreground) 14%,transparent) 0,color-mix(in srgb,var(--foreground) 14%,transparent) 1px,transparent 1px,transparent 4px)}
-        .agy-effort-fill{position:absolute;inset:0;border-radius:12px 0 0 12px;background-color:#0285ff;overflow:hidden;pointer-events:none;will-change:transform;transform:translateX(calc(-100% + 12px));transition:background-color 180ms ease}
+        .agy-effort-fill{position:absolute;inset:0;border-radius:12px 0 0 12px;background-color:#0285ff;overflow:hidden;pointer-events:none;will-change:transform;transform:translate3d(calc(-100% + 12px),0,0);transition:background-color 180ms ease}
         .dark .agy-effort-fill{background-color:#3a83f7}
-        .agy-effort-max-effects{position:absolute;inset:0;opacity:0;pointer-events:none;will-change:transform,opacity;transition:opacity 300ms ease}
+        .agy-effort-max-effects{position:absolute;inset:0;opacity:0;pointer-events:none;will-change:transform,opacity;transition:opacity 240ms ease}
         .agy-effort-bar[data-max="true"] .agy-effort-max-effects{opacity:1}
         .agy-effort-max-fill{position:absolute;inset:-1px;z-index:2;pointer-events:none}
-        .agy-effort-max-mask{--agy-max-reveal:0%;position:absolute;inset:0;contain:paint;isolation:isolate;background:linear-gradient(90deg,color-mix(in srgb,#0285ff 60%,#924ff7),#924ff7 55%,color-mix(in srgb,#924ff7 72%,#0285ff));-webkit-mask-image:linear-gradient(90deg,transparent calc(var(--agy-max-reveal) - 120px),#000 var(--agy-max-reveal),#000 100%);mask-image:linear-gradient(90deg,transparent calc(var(--agy-max-reveal) - 120px),#000 var(--agy-max-reveal),#000 100%);-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat}
-        .agy-effort-max-fill[data-reveal="1"] .agy-effort-max-mask{animation:agy-max-reveal 2s ease both}
+        .agy-effort-max-mask{--agy-max-reveal:0%;position:absolute;inset:0;contain:paint;isolation:isolate;background:linear-gradient(90deg,color-mix(in srgb,#0285ff 60%,#924ff7),#924ff7 55%,color-mix(in srgb,#924ff7 72%,#0285ff))}
+        .agy-effort-max-fill[data-reveal="1"] .agy-effort-max-mask{-webkit-mask-image:linear-gradient(90deg,transparent calc(var(--agy-max-reveal) - 120px),#000 var(--agy-max-reveal),#000 100%);mask-image:linear-gradient(90deg,transparent calc(var(--agy-max-reveal) - 120px),#000 var(--agy-max-reveal),#000 100%);-webkit-mask-size:100% 100%;mask-size:100% 100%;-webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;animation:agy-max-reveal 2s ease both}
         .agy-effort-bar[data-max="true"] .agy-effort-max-fill[data-gl-fallback="1"] .agy-effort-max-mask{background:linear-gradient(110deg,#4c58f5,#924ff7 35%,#c084fc 55%,#7c3aed 78%,#3b82f6);background-size:220% 100%;animation:agy-max-shimmer 4.8s ease-in-out infinite}
         .agy-effort-bar[data-max="true"] .agy-effort-max-fill[data-reveal="1"][data-gl-fallback="1"] .agy-effort-max-mask{animation:agy-max-reveal 2s ease both,agy-max-shimmer 4.8s ease-in-out infinite}
         .agy-effort-max-canvas{display:block;width:100%;height:100%;mix-blend-mode:luminosity}
@@ -343,7 +341,8 @@
         .agy-effort-bar:not([data-pointer-down="1"]):not([data-locked="true"]) .agy-effort-dot[data-hover="1"]{filter:brightness(.85);transform:translate(-50%,-50%) scale(2)}
         .agy-effort-bar[data-max="true"] .agy-effort-dot{opacity:0;transform:translate(-50%,-50%) scale(.75);transition-duration:400ms;transition-delay:100ms}
         .agy-effort-thumb-rail{position:absolute;inset:0;z-index:4;pointer-events:none;overflow:visible}
-        .agy-effort-thumb-anchor{position:absolute;top:50%;left:var(--agy-knob-x,12px);width:28px;height:28px;transform:translate(-50%,-50%);will-change:left}
+        .agy-effort-thumb-mover{position:absolute;inset:0;pointer-events:none;will-change:transform;transform:translate3d(12px,0,0)}
+        .agy-effort-thumb-anchor{position:absolute;top:50%;left:0;width:28px;height:28px;transform:translate(-50%,-50%)}
         .agy-effort-knob-spring{position:absolute;inset:0;z-index:3;transform-origin:50% 50%;will-change:transform}
         .agy-effort-knob{position:absolute;inset:0;border-radius:50%;background:#ffffff;border:.5px solid rgba(0,0,0,.16);box-shadow:0 1px 4px rgba(0,0,0,.18),0 0 2px rgba(0,0,0,.10);transition:box-shadow 140ms ease}
         .dark .agy-effort-knob{border-color:rgba(255,255,255,.22);box-shadow:0 1px 5px rgba(0,0,0,.38),0 0 2px rgba(0,0,0,.22)}
@@ -1265,7 +1264,7 @@
     }
 
     function createEffortSliderController(bar, refs) {
-      const { fill, maxEffects, maxFill, maxCanvas, maxParticles, thumbAnchor, knobSpring } = refs;
+      const { fill, maxEffects, maxFill, maxCanvas, maxParticles, thumbMover, thumbAnchor, knobSpring } = refs;
       let destroyed = false;
       let visualRatio = 0;
       let posTarget = 0;
@@ -1283,32 +1282,42 @@
       let hasInitialized = false;
       let glState = null;
       let glUnavailable = false;
+      let glPrewarmId = 0;
+      let glPrewarmIsIdle = false;
+      let glStartRaf = 0;
       let particleTimers = [];
-      let particleRafs = [];
+      let particleBatchRaf = 0;
       let burstTimer = 0;
       let revealRaf = 0;
+      let revealEndTimer = 0;
       let activeBurstEl = null;
 
+      const SPRING_MAX_SUBSTEP = 1 / 120;
       const nowMs = () => (typeof performance !== 'undefined' && typeof performance.now === 'function' ? performance.now() : Date.now());
       const canAnimate = () => !destroyed && !disposed && !prefersReducedMotion() && typeof requestAnimationFrame === 'function';
+
+      function notifySettled() {
+        if (deferredWorkbenchSync && !hasActiveEffortMotion()) {
+          deferredWorkbenchSync = false;
+          scheduleSync();
+        }
+      }
 
       function applyVisualRatio(rawRatio) {
         const ratio = Math.max(0, Math.min(1, Number(rawRatio) || 0));
         visualRatio = ratio;
         const pct = ratio * 100;
         const offsetPx = 12 - (pct / 50) * 12;
-        const ratioStr = ratio.toFixed(4);
-        const knobExpr = `calc(12px + (100% - 24px) * ${ratioStr})`;
-        const fillExpr = `calc(24px + (100% - 24px) * ${ratioStr})`;
-        bar.style?.setProperty?.('--agy-fill', knobExpr);
-        bar.style?.setProperty?.('--agy-knob-x', knobExpr);
-        bar.style?.setProperty?.('--agy-fill-w', fillExpr);
-        if (thumbAnchor?.style) thumbAnchor.style.left = knobExpr;
+        if (thumbMover?.style) {
+          thumbMover.style.transform = `translate3d(calc(${pct.toFixed(4)}% + ${offsetPx.toFixed(3)}px),0,0)`;
+        } else if (thumbAnchor?.style) {
+          thumbAnchor.style.left = `calc(12px + (100% - 24px) * ${ratio.toFixed(4)})`;
+        }
         if (fill?.style) {
-          fill.style.transform = `translateX(calc(${(pct - 100).toFixed(4)}% + ${offsetPx.toFixed(3)}px))`;
+          fill.style.transform = `translate3d(calc(${(pct - 100).toFixed(4)}% + ${offsetPx.toFixed(3)}px),0,0)`;
         }
         if (maxEffects?.style) {
-          maxEffects.style.transform = `translateX(calc(${((100 - pct) * 0.9).toFixed(4)}% + ${(-offsetPx * 0.9).toFixed(3)}px))`;
+          maxEffects.style.transform = `translate3d(calc(${((100 - pct) * 0.9).toFixed(4)}% + ${(-offsetPx * 0.9).toFixed(3)}px),0,0)`;
         }
       }
 
@@ -1322,32 +1331,39 @@
       function stepPosSpring(ts) {
         posRaf = 0;
         if (destroyed || disposed || !bar.isConnected) return;
-        const dt = posLastTs ? Math.min(Math.max((ts - posLastTs) / 1000, 0.001), 0.032) : 0.016;
+        let remaining = posLastTs ? Math.min(Math.max((ts - posLastTs) / 1000, 0.001), 0.05) : (1 / 60);
         posLastTs = ts;
-        const disp = posTarget - visualRatio;
-        const acc = 380 * disp - 32 * posVel;
-        posVel += acc * dt;
-        const next = visualRatio + posVel * dt;
-        if (Math.abs(posTarget - next) < 0.0005 && Math.abs(posVel) < 0.002) {
+        let cur = visualRatio;
+        let vel = posVel;
+        while (remaining > 0) {
+          const dt = remaining > SPRING_MAX_SUBSTEP ? SPRING_MAX_SUBSTEP : remaining;
+          remaining -= dt;
+          const acc = 520 * (posTarget - cur) - 36 * vel;
+          vel += acc * dt;
+          cur += vel * dt;
+        }
+        posVel = vel;
+        if (Math.abs(posTarget - cur) < 0.0004 && Math.abs(posVel) < 0.002) {
           posVel = 0;
           posLastTs = 0;
           applyVisualRatio(posTarget);
+          notifySettled();
           return;
         }
-        applyVisualRatio(next);
+        applyVisualRatio(cur);
         posRaf = requestAnimationFrame(stepPosSpring);
       }
 
       function animateToRatio(target, immediate = false) {
         const clamped = Math.max(0, Math.min(1, Number(target) || 0));
         posTarget = clamped;
-        if (immediate || !canAnimate() || Math.abs(clamped - visualRatio) < 0.0005) {
+        if (immediate || !canAnimate() || Math.abs(clamped - visualRatio) < 0.0004) {
           stopPosSpring();
           applyVisualRatio(clamped);
           return;
         }
         if (!posRaf) {
-          posLastTs = nowMs();
+          posLastTs = 0;
           posRaf = requestAnimationFrame(stepPosSpring);
         }
       }
@@ -1369,36 +1385,44 @@
       function stepScaleSpring(ts) {
         scaleRaf = 0;
         if (destroyed || disposed || !bar.isConnected) return;
-        const dt = scaleLastTs ? Math.min(Math.max((ts - scaleLastTs) / 1000, 0.001), 0.032) : 0.016;
+        let remaining = scaleLastTs ? Math.min(Math.max((ts - scaleLastTs) / 1000, 0.001), 0.05) : (1 / 60);
         scaleLastTs = ts;
         const expanding = scaleTarget > 1;
         const stiffness = expanding ? 420 : 220;
         const damping = expanding ? 38 : 26;
-        const disp = scaleTarget - scaleCur;
-        const acc = stiffness * disp - damping * scaleVel;
-        scaleVel += acc * dt;
-        const next = scaleCur + scaleVel * dt;
-        if (Math.abs(scaleTarget - next) < 0.0008 && Math.abs(scaleVel) < 0.003) {
+        let cur = scaleCur;
+        let vel = scaleVel;
+        while (remaining > 0) {
+          const dt = remaining > SPRING_MAX_SUBSTEP ? SPRING_MAX_SUBSTEP : remaining;
+          remaining -= dt;
+          const acc = stiffness * (scaleTarget - cur) - damping * vel;
+          vel += acc * dt;
+          cur += vel * dt;
+        }
+        scaleVel = vel;
+        if (Math.abs(scaleTarget - cur) < 0.0008 && Math.abs(scaleVel) < 0.003) {
           scaleVel = 0;
           scaleLastTs = 0;
           applyScale(scaleTarget);
           return;
         }
-        applyScale(next);
+        applyScale(cur);
         scaleRaf = requestAnimationFrame(stepScaleSpring);
       }
 
       function setThumbExpanded(expanded) {
         const nextTarget = expanded ? CODEX_THUMB_EXPAND_SCALE : 1;
         scaleTarget = nextTarget;
-        bar.setAttribute?.('data-thumb-expanded', expanded ? '1' : '0');
+        if (bar.getAttribute?.('data-thumb-expanded') !== (expanded ? '1' : '0')) {
+          bar.setAttribute?.('data-thumb-expanded', expanded ? '1' : '0');
+        }
         if (!canAnimate()) {
           stopScaleSpring();
           applyScale(nextTarget);
           return;
         }
         if (!scaleRaf) {
-          scaleLastTs = nowMs();
+          scaleLastTs = 0;
           scaleRaf = requestAnimationFrame(stepScaleSpring);
         }
       }
@@ -1407,7 +1431,22 @@
         try { gl?.getExtension?.('WEBGL_lose_context')?.loseContext?.(); } catch {}
       }
 
+      function cancelGlPrewarm() {
+        if (!glPrewarmId) return;
+        if (glPrewarmIsIdle && typeof globalThis.cancelIdleCallback === 'function') {
+          try { globalThis.cancelIdleCallback(glPrewarmId); } catch {}
+        } else {
+          clearTimeout(glPrewarmId);
+        }
+        glPrewarmId = 0;
+        glPrewarmIsIdle = false;
+      }
+
       function pauseMaxGl() {
+        if (glStartRaf && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(glStartRaf);
+          glStartRaf = 0;
+        }
         maxFill?.removeAttribute?.('data-gl-fallback');
         if (!glState) return;
         if (glState.rafId && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(glState.rafId);
@@ -1417,6 +1456,7 @@
       }
 
       function disposeMaxGl() {
+        cancelGlPrewarm();
         pauseMaxGl();
         if (!glState) return;
         const st = glState;
@@ -1501,16 +1541,30 @@
         gl.bufferData(gl.ARRAY_BUFFER, CODEX_GL_QUAD, gl.STATIC_DRAW);
         gl.enableVertexAttribArray(aPos);
         gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
-        glState = { gl, program, buf, uRes, uTime, startTs: nowMs(), rafId: 0, ro: null };
+        glState = { gl, program, buf, uRes, uTime, startTs: nowMs(), rafId: 0, ro: null, lastW: 0, lastH: 0 };
         return glState;
       }
 
-      function startMaxGl() {
-        const st = ensureMaxGl();
-        if (!st) {
-          maxFill?.setAttribute?.('data-gl-fallback', '1');
-          return;
+      function prewarmMaxGl() {
+        if (destroyed || disposed || glState || glUnavailable || glPrewarmId || prefersReducedMotion()) return;
+        if (!maxCanvas || typeof maxCanvas.getContext !== 'function' || !CODEX_GL_QUAD) return;
+        const run = () => {
+          glPrewarmId = 0;
+          glPrewarmIsIdle = false;
+          if (destroyed || disposed || !bar.isConnected || glState || glUnavailable) return;
+          ensureMaxGl();
+        };
+        if (typeof globalThis.requestIdleCallback === 'function') {
+          glPrewarmIsIdle = true;
+          glPrewarmId = globalThis.requestIdleCallback(run, { timeout: 360 });
+        } else {
+          glPrewarmIsIdle = false;
+          glPrewarmId = setTimeout(run, 140);
         }
+      }
+
+      function runMaxGlLoop(st) {
+        if (!st || destroyed || disposed || !maxActive || !bar.isConnected) return;
         maxFill?.removeAttribute?.('data-gl-fallback');
         const reduce = prefersReducedMotion();
         const drawFrame = sec => {
@@ -1518,14 +1572,20 @@
           st.gl.drawArrays(st.gl.TRIANGLES, 0, 6);
         };
         const resize = () => {
-          const dpr = Math.min(typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1, 2);
+          const dpr = Math.min(typeof globalThis.devicePixelRatio === 'number' ? globalThis.devicePixelRatio : 1, 1.5);
           const rect = maxCanvas.getBoundingClientRect?.() || { width: 208, height: 26 };
           const w = Math.max(Math.round(rect.width || 208), 1);
           const h = Math.max(Math.round(rect.height || 26), 1);
-          maxCanvas.width = Math.round(w * dpr);
-          maxCanvas.height = Math.round(h * dpr);
-          st.gl.viewport(0, 0, maxCanvas.width, maxCanvas.height);
-          st.gl.uniform2f(st.uRes, w, h);
+          const pw = Math.round(w * dpr);
+          const ph = Math.round(h * dpr);
+          if (st.lastW !== pw || st.lastH !== ph) {
+            st.lastW = pw;
+            st.lastH = ph;
+            maxCanvas.width = pw;
+            maxCanvas.height = ph;
+            st.gl.viewport(0, 0, pw, ph);
+            st.gl.uniform2f(st.uRes, w, h);
+          }
           drawFrame(reduce ? 0 : (nowMs() - st.startTs) / 1000);
         };
         if (st.ro) { try { st.ro.disconnect(); } catch {} }
@@ -1544,17 +1604,42 @@
         }
       }
 
+      function startMaxGl() {
+        cancelGlPrewarm();
+        if (glState) {
+          runMaxGlLoop(glState);
+          return;
+        }
+        if (glUnavailable || !maxCanvas || typeof maxCanvas.getContext !== 'function' || !CODEX_GL_QUAD) {
+          glUnavailable = true;
+          maxFill?.setAttribute?.('data-gl-fallback', '1');
+          return;
+        }
+        // Paint immediate CSS aurora gradient while deferring cold GL shader compilation off the click frame.
+        maxFill?.setAttribute?.('data-gl-fallback', '1');
+        if (typeof requestAnimationFrame === 'function') {
+          if (glStartRaf) cancelAnimationFrame(glStartRaf);
+          glStartRaf = requestAnimationFrame(() => {
+            glStartRaf = 0;
+            if (destroyed || disposed || !maxActive || !bar.isConnected) return;
+            const st = ensureMaxGl();
+            if (st) runMaxGlLoop(st);
+          });
+          return;
+        }
+        const st = ensureMaxGl();
+        if (st) runMaxGlLoop(st);
+      }
+
       function stopParticles() {
         for (let i = 0; i < particleTimers.length; i++) {
           if (particleTimers[i]) clearTimeout(particleTimers[i]);
         }
         particleTimers = [];
-        if (typeof cancelAnimationFrame === 'function') {
-          for (let i = 0; i < particleRafs.length; i++) {
-            if (particleRafs[i]) cancelAnimationFrame(particleRafs[i]);
-          }
+        if (particleBatchRaf && typeof cancelAnimationFrame === 'function') {
+          cancelAnimationFrame(particleBatchRaf);
         }
-        particleRafs = [];
+        particleBatchRaf = 0;
         maxParticles?.setAttribute?.('data-active', '0');
       }
 
@@ -1566,31 +1651,31 @@
         const nodes = [...(maxParticles.querySelectorAll?.('.agy-effort-max-particle') || [])];
         if (!nodes.length) return;
         particleTimers = new Array(nodes.length).fill(0);
-        particleRafs = new Array(nodes.length).fill(0);
-        for (let i = 0; i < nodes.length; i++) {
-          const slot = i;
+        const stepNode = slot => {
+          particleTimers[slot] = 0;
+          if (destroyed || disposed || !maxActive || !bar.isConnected) return;
           const pNode = nodes[slot];
-          const scheduleStep = () => {
-            particleRafs[slot] = 0;
-            particleTimers[slot] = 0;
-            if (destroyed || disposed || !maxActive || !bar.isConnected) return;
-            const r1 = Math.random();
-            const r2 = Math.random();
-            const durScale = 0.8 + 1.2 * Math.random();
-            const dx = Math.round((r1 - 0.5) * 8);
-            const y = Math.round(12 + (r2 - 0.5) * 14);
-            const durSec = 1.6 * durScale;
-            if (pNode.style) {
-              pNode.style.transitionDuration = `${durSec.toFixed(3)}s`;
-              pNode.style.translate = `${dx}px ${y}px`;
-            }
-            particleTimers[slot] = setTimeout(scheduleStep, Math.round(durSec * 1000));
-          };
-          if (typeof requestAnimationFrame === 'function') {
-            particleRafs[slot] = requestAnimationFrame(scheduleStep);
-          } else {
-            particleTimers[slot] = setTimeout(scheduleStep, 0);
+          const r1 = Math.random();
+          const r2 = Math.random();
+          const durScale = 0.8 + 1.2 * Math.random();
+          const dx = Math.round((r1 - 0.5) * 8);
+          const y = Math.round(12 + (r2 - 0.5) * 14);
+          const durSec = 1.6 * durScale;
+          if (pNode?.style) {
+            pNode.style.transitionDuration = `${durSec.toFixed(3)}s`;
+            pNode.style.translate = `${dx}px ${y}px`;
           }
+          particleTimers[slot] = setTimeout(() => stepNode(slot), Math.round(durSec * 1000));
+        };
+        const launchAll = () => {
+          particleBatchRaf = 0;
+          if (destroyed || disposed || !maxActive || !bar.isConnected) return;
+          for (let i = 0; i < nodes.length; i++) stepNode(i);
+        };
+        if (typeof requestAnimationFrame === 'function') {
+          particleBatchRaf = requestAnimationFrame(launchAll);
+        } else {
+          particleTimers[0] = setTimeout(launchAll, 0);
         }
       }
 
@@ -1625,26 +1710,42 @@
         }, 720);
       }
 
-      function triggerReveal() {
-        if (!maxFill) return;
+      function clearRevealTimers() {
         if (revealRaf && typeof cancelAnimationFrame === 'function') {
           cancelAnimationFrame(revealRaf);
           revealRaf = 0;
         }
+        if (revealEndTimer) {
+          clearTimeout(revealEndTimer);
+          revealEndTimer = 0;
+        }
+      }
+
+      function triggerReveal() {
+        if (!maxFill) return;
+        clearRevealTimers();
         if (prefersReducedMotion()) {
           maxFill.setAttribute?.('data-reveal', '0');
           return;
         }
         maxFill.setAttribute?.('data-reveal', '0');
+        const armEnd = () => {
+          revealEndTimer = setTimeout(() => {
+            revealEndTimer = 0;
+            if (!destroyed && !disposed) maxFill.setAttribute?.('data-reveal', '0');
+          }, 2050);
+        };
         if (typeof requestAnimationFrame === 'function') {
           revealRaf = requestAnimationFrame(() => {
             revealRaf = 0;
             if (!destroyed && !disposed && maxActive && bar.isConnected) {
               maxFill.setAttribute?.('data-reveal', '1');
+              armEnd();
             }
           });
         } else {
           maxFill.setAttribute?.('data-reveal', '1');
+          armEnd();
         }
       }
 
@@ -1659,6 +1760,7 @@
             triggerReveal();
             triggerMaxBurst();
           } else {
+            clearRevealTimers();
             maxFill?.setAttribute?.('data-reveal', '0');
           }
         } else if (!shouldRun && maxActive) {
@@ -1666,6 +1768,7 @@
           pauseMaxGl();
           stopParticles();
           clearBurst();
+          clearRevealTimers();
           maxFill?.setAttribute?.('data-reveal', '0');
         }
       }
@@ -1675,6 +1778,11 @@
         animateToRatio(ratio, snapNow);
         syncMaxState(isMax, { userInitiated, stage, locked });
         hasInitialized = true;
+      }
+
+      function setDragRatio(ratio) {
+        stopPosSpring();
+        applyVisualRatio(ratio);
       }
 
       function setDragPreview(ratio, { isMax = false, fireBurst = false, stage = 'effort', locked = false } = {}) {
@@ -1692,20 +1800,28 @@
         disposeMaxGl();
         stopParticles();
         clearBurst();
-        if (revealRaf && typeof cancelAnimationFrame === 'function') {
-          cancelAnimationFrame(revealRaf);
-          revealRaf = 0;
-        }
+        clearRevealTimers();
       }
 
       return {
         setTarget,
+        setDragRatio,
         setDragPreview,
         setThumbExpanded,
+        prewarmMaxGl,
         getVisualRatio: () => visualRatio,
         isMaxActive: () => maxActive,
+        isAnimating: () => Boolean(posRaf),
         destroy
       };
+    }
+
+    function hasActiveEffortMotion() {
+      for (const [barNode, ctrl] of effortControllers.entries()) {
+        if (!barNode.isConnected) continue;
+        if (barNode.hasAttribute?.('data-dragging') || ctrl.isAnimating?.()) return true;
+      }
+      return false;
     }
 
     function updateEffortSliderVisual(panel, effortList, activeKey, { isClaude = false, locked = false, pop = false, modelLabel = '', openStage = '', immediate = false } = {}) {
@@ -1721,9 +1837,12 @@
       const knobExpr = count > 1 ? `calc(12px + (100% - 24px) * ${ratioKey})` : 'calc(100% - 12px)';
       const fillExpr = count > 1 ? `calc(24px + (100% - 24px) * ${ratioKey})` : '100%';
 
-      slider.setAttribute?.('data-max', isMax ? 'true' : 'false');
-      slider.setAttribute?.('data-brand', isClaude ? 'claude' : 'codex');
-      slider.setAttribute?.('data-locked', locked ? 'true' : 'false');
+      const nextMaxAttr = isMax ? 'true' : 'false';
+      const nextBrandAttr = isClaude ? 'claude' : 'codex';
+      const nextLockedAttr = locked ? 'true' : 'false';
+      if (slider.getAttribute?.('data-max') !== nextMaxAttr) slider.setAttribute?.('data-max', nextMaxAttr);
+      if (slider.getAttribute?.('data-brand') !== nextBrandAttr) slider.setAttribute?.('data-brand', nextBrandAttr);
+      if (slider.getAttribute?.('data-locked') !== nextLockedAttr) slider.setAttribute?.('data-locked', nextLockedAttr);
       const ctrl = effortControllers.get(slider);
       if (!slider.hasAttribute?.('data-dragging')) {
         const ratioChanged = slider.getAttribute?.('data-ratio') !== ratioKey;
@@ -1747,7 +1866,7 @@
       if (valEl) {
         const nextText = effortLabel(key);
         const changed = valEl.textContent !== nextText;
-        valEl.textContent = nextText;
+        if (changed) valEl.textContent = nextText;
         if (pop && changed) {
           valEl.setAttribute?.('data-pop', '0');
           if (typeof requestAnimationFrame === 'function') {
@@ -1759,17 +1878,22 @@
       }
       const track = slider.querySelector?.('[role="slider"]');
       if (track) {
-        track.setAttribute?.('aria-valuenow', String(activeIdx));
-        track.setAttribute?.('aria-valuemax', String(Math.max(0, count - 1)));
-        track.setAttribute?.('aria-valuetext', effortLabel(key));
+        const nowStr = String(activeIdx);
+        const maxStr = String(Math.max(0, count - 1));
+        const valText = effortLabel(key);
+        if (track.getAttribute?.('aria-valuenow') !== nowStr) track.setAttribute?.('aria-valuenow', nowStr);
+        if (track.getAttribute?.('aria-valuemax') !== maxStr) track.setAttribute?.('aria-valuemax', maxStr);
+        if (track.getAttribute?.('aria-valuetext') !== valText) track.setAttribute?.('aria-valuetext', valText);
       }
       const dots = [...(slider.querySelectorAll?.('.agy-effort-dot') || [])];
       for (let i = 0; i < dots.length; i++) {
-        dots[i].setAttribute?.('data-on', i <= activeIdx ? '1' : '0');
+        const onVal = i <= activeIdx ? '1' : '0';
+        if (dots[i].getAttribute?.('data-on') !== onVal) dots[i].setAttribute?.('data-on', onVal);
       }
       for (const tick of slider.querySelectorAll?.('.agy-effort-tick') || []) {
         const tKey = tick.getAttribute?.('data-effort');
-        tick.setAttribute?.('aria-pressed', tKey === key ? 'true' : 'false');
+        const pressedVal = tKey === key ? 'true' : 'false';
+        if (tick.getAttribute?.('aria-pressed') !== pressedVal) tick.setAttribute?.('aria-pressed', pressedVal);
       }
       syncTriggerEffortTint(key, isMax, isClaude, openStage || panel.getAttribute?.('data-agy-codex-stage') || '');
     }
@@ -1777,10 +1901,24 @@
     function selectEffortOption(panel, profile, idx, userInitiated = true) {
       const target = profile.effortList[idx];
       if (!target || profile.locked) return;
+      if (userInitiated && target.key === profile.activeKey) {
+        updateEffortSliderVisual(panel, profile.effortList, target.key, {
+          isClaude: profile.isClaude,
+          locked: profile.locked,
+          pop: false
+        });
+        return;
+      }
       if (userInitiated && profile.modelKey) {
         recordEffortChoice(profile.modelKey, target.key);
         appliedPanelModelMap.set(panel, profile.modelKey);
       }
+      const updated = { ...profile, activeKey: target.key };
+      updateEffortSliderVisual(panel, updated.effortList, target.key, {
+        isClaude: updated.isClaude,
+        locked: updated.locked,
+        pop: userInitiated
+      });
       applyingEffortMemory = !userInitiated;
       try {
         if (profile.mode === 'fiber' && target.option) {
@@ -1790,6 +1928,7 @@
           });
           if (ok) {
             pendingModelOverride = profile.isOrchPlanner ? (profile.ctx.selectedModel || null) : target.option;
+            pendingModelOverrideAt = Date.now();
             lastHostSelectedLabel = profile.ctx.selectedModel?.label || '';
           }
         } else {
@@ -1798,14 +1937,10 @@
       } finally {
         applyingEffortMemory = false;
       }
-      const updated = { ...profile, activeKey: target.key };
-      updateEffortSliderVisual(panel, updated.effortList, target.key, {
-        isClaude: updated.isClaude,
-        locked: updated.locked,
-        pop: userInitiated
-      });
-      if (updated.mode === 'fiber') syncFiberPanelRows(panel, updated);
-      if (typeof queueMicrotask === 'function') {
+      if (updated.mode === 'fiber' && panel.getAttribute?.('data-agy-codex-stage') === 'models') {
+        syncFiberPanelRows(panel, updated);
+      }
+      if (updated.mode !== 'fiber' && typeof queueMicrotask === 'function') {
         queueMicrotask(() => { if (!disposed) syncEffortSlider(); });
       }
     }
@@ -1814,8 +1949,18 @@
       const fiberCtx = readModelSelectorFiber(panel);
       if (fiberCtx) {
         const hostLabel = fiberCtx.selectedModel?.label || '';
-        if (pendingModelOverride && (hostLabel === pendingModelOverride.label || (lastHostSelectedLabel && hostLabel !== lastHostSelectedLabel))) {
-          pendingModelOverride = null;
+        if (pendingModelOverride) {
+          const matchedTarget = hostLabel === pendingModelOverride.label;
+          const expired = pendingModelOverrideAt > 0 && (Date.now() - pendingModelOverrideAt > 1500);
+          const switchedOtherModel = Boolean(
+            lastHostSelectedLabel
+            && hostLabel !== lastHostSelectedLabel
+            && normalizeModelKey(hostLabel) !== normalizeModelKey(pendingModelOverride.label)
+          );
+          if (matchedTarget || expired || switchedOtherModel) {
+            pendingModelOverride = null;
+            pendingModelOverrideAt = 0;
+          }
         }
         lastHostSelectedLabel = hostLabel;
         return resolveFiberProfile(fiberCtx, pendingModelOverride);
@@ -1900,6 +2045,7 @@
           event.stopImmediatePropagation?.();
           event.stopPropagation?.();
           pendingModelOverride = action.targetOpt;
+          pendingModelOverrideAt = Date.now();
           lastHostSelectedLabel = action.fiberCtx.selectedModel?.label || '';
           if (action.modelKey) appliedPanelModelMap.set(panel, action.modelKey);
           if (!keepOpen) {
@@ -2049,9 +2195,7 @@
         if (popupWrap) popupWrap.setAttribute?.('data-agy-codex-popup', stage);
 
         if (canSlideEffort) {
-          const backIsMax = isMaxEffortKey(profile.effortList, activeKey, profile.locked);
           const backLabelText = tr('返回推理强度', 'Back to reasoning');
-          const backBadgeText = effortLabel(activeKey);
           let backBtn = existingBack;
           if (!backBtn) {
             backBtn = el('button', {
@@ -2072,20 +2216,18 @@
               el('span', { className: 'agy-codex-back-left' },
                 makeChevronSvg('agy-codex-back-chev'),
                 el('span', { className: 'agy-codex-back-label', textContent: backLabelText })
-              ),
-              el('span', { className: 'agy-codex-back-badge', textContent: backBadgeText })
+              )
             );
             for (const evName of ['pointerdown', 'mousedown', 'pointerup', 'mouseup']) {
               backBtn.addEventListener?.(evName, ev => { ev?.stopPropagation?.(); });
             }
             panel.insertBefore(backBtn, panel.firstChild || null);
           }
-          backBtn.setAttribute?.('data-max', backIsMax ? 'true' : 'false');
-          backBtn.setAttribute?.('aria-label', backLabelText);
+          backBtn.removeAttribute?.('data-max');
+          if (backBtn.getAttribute?.('aria-label') !== backLabelText) backBtn.setAttribute?.('aria-label', backLabelText);
           const lblEl = backBtn.querySelector?.('.agy-codex-back-label');
           if (lblEl && lblEl.textContent !== backLabelText) lblEl.textContent = backLabelText;
-          const badgeEl = backBtn.querySelector?.('.agy-codex-back-badge');
-          if (badgeEl && badgeEl.textContent !== backBadgeText) badgeEl.textContent = backBadgeText;
+          backBtn.querySelector?.('.agy-codex-back-badge')?.remove?.();
         } else {
           existingBack?.remove?.();
         }
@@ -2113,7 +2255,7 @@
           : `${profile.mode}:${profile.locked ? 'lock' : 'free'}:${profile.effortList.map(i => i.key).join(',')}`;
         if (profile.mode === 'fiber') {
           mountedFiberSlider = true;
-          syncFiberPanelRows(panel, { ...profile, activeKey });
+          if (stage === 'models') syncFiberPanelRows(panel, { ...profile, activeKey });
         }
         if (existing && existing.getAttribute?.('data-mode') === desiredMode && existing.getAttribute?.('data-sig') === signature && (desiredMode !== 'slider' || effortControllers.has(existing))) {
           if (desiredMode === 'slider') {
@@ -2266,7 +2408,8 @@
           const knob = el('div', { className: 'agy-effort-knob', 'aria-hidden': 'true' });
           const knobSpring = el('span', { className: 'agy-effort-knob-spring', 'aria-hidden': 'true' }, knob);
           const thumbAnchor = el('span', { className: 'agy-effort-thumb-anchor', 'aria-hidden': 'true' }, knobSpring);
-          const thumbRail = el('div', { className: 'agy-effort-thumb-rail', 'aria-hidden': 'true' }, thumbAnchor);
+          const thumbMover = el('div', { className: 'agy-effort-thumb-mover', 'aria-hidden': 'true' }, thumbAnchor);
+          const thumbRail = el('div', { className: 'agy-effort-thumb-rail', 'aria-hidden': 'true' }, thumbMover);
           const track = el('div', {
             className: 'agy-effort-track',
             role: 'slider',
@@ -2283,11 +2426,13 @@
             maxFill,
             maxCanvas,
             maxParticles,
+            thumbMover,
             thumbAnchor,
             knobSpring
           });
           effortControllers.set(bar, controller);
 
+          const valNode = modelSwitchBtn.querySelector?.('.agy-effort-val') || null;
           let pointerHeld = false;
           let activePointerId = null;
           let dragging = false;
@@ -2295,6 +2440,8 @@
           let downX = 0;
           let downTickEl = null;
           let grabMetrics = null;
+          let dragProfile = null;
+          let lastPreviewIdx = -1;
           let burstFiredThisDrag = false;
           const wheelState = { accumulatedDelta: 0, lastEventTime: 0 };
 
@@ -2332,11 +2479,14 @@
           const cancelPointer = e => {
             if (!pointerHeld || !matchesActivePointer(e)) return;
             const pid = activePointerId;
+            const prevProfile = dragProfile;
             pointerHeld = false;
             activePointerId = null;
             dragging = false;
             downTickEl = null;
             grabMetrics = null;
+            dragProfile = null;
+            lastPreviewIdx = -1;
             burstFiredThisDrag = false;
             if (pid != null && track.hasPointerCapture?.(pid)) {
               try { track.releasePointerCapture?.(pid); } catch {}
@@ -2344,8 +2494,12 @@
             bar.removeAttribute?.('data-pointer-down');
             bar.removeAttribute?.('data-dragging');
             updateThumbScale();
-            const fresh = resolvePanelProfile(panel);
+            const fresh = prevProfile || resolvePanelProfile(panel);
             updateEffortSliderVisual(panel, fresh.effortList, fresh.activeKey, { isClaude: fresh.isClaude, locked: fresh.locked, modelLabel: displayModelName, openStage: stage });
+            if (deferredWorkbenchSync && !hasActiveEffortMotion()) {
+              deferredWorkbenchSync = false;
+              scheduleSync();
+            }
           };
 
           track.addEventListener?.('pointerenter', () => {
@@ -2365,7 +2519,9 @@
             pointerHeld = true;
             activePointerId = e.pointerId ?? null;
             dragging = false;
-            burstFiredThisDrag = isMaxOptionAt(fresh.effortList, Math.max(0, fresh.effortList.findIndex(x => x.key === fresh.activeKey)), fresh.locked);
+            dragProfile = fresh;
+            lastPreviewIdx = Math.max(0, fresh.effortList.findIndex(x => x.key === fresh.activeKey));
+            burstFiredThisDrag = isMaxOptionAt(fresh.effortList, lastPreviewIdx, fresh.locked);
             downX = Number(e.clientX || 0);
             downTickEl = e.target?.closest?.('.agy-effort-tick') || null;
             const geom = trackGeometry();
@@ -2390,42 +2546,55 @@
             if (!dragging && Math.abs(cx - downX) > 4) {
               dragging = true;
               bar.setAttribute?.('data-dragging', '1');
+              bar.removeAttribute?.('data-ratio');
             }
             if (!dragging) return;
-            const fresh = resolvePanelProfile(panel);
-            if (fresh.locked || fresh.effortList.length < 2) return;
+            const prof = dragProfile;
+            if (!prof || prof.locked || prof.effortList.length < 2) return;
             const ratio = ratioAtClientX(cx, grabMetrics?.thumbOffset || 0);
             if (ratio == null) return;
-            bar.removeAttribute?.('data-ratio');
-            const previewIdx = Math.round(ratio * (fresh.effortList.length - 1));
-            const previewItem = fresh.effortList[previewIdx];
-            const previewIsMax = isMaxOptionAt(fresh.effortList, previewIdx, fresh.locked);
+            const previewIdx = Math.round(ratio * (prof.effortList.length - 1));
+            if (previewIdx === lastPreviewIdx) {
+              controller.setDragRatio(ratio);
+              return;
+            }
+            lastPreviewIdx = previewIdx;
+            const previewItem = prof.effortList[previewIdx];
+            const previewIsMax = isMaxOptionAt(prof.effortList, previewIdx, prof.locked);
             const shouldBurst = previewIsMax && !burstFiredThisDrag;
-            if (previewIsMax) burstFiredThisDrag = true;
-            else burstFiredThisDrag = false;
-            bar.setAttribute?.('data-max', previewIsMax ? 'true' : 'false');
+            burstFiredThisDrag = previewIsMax;
+            const nextMaxAttr = previewIsMax ? 'true' : 'false';
+            if (bar.getAttribute?.('data-max') !== nextMaxAttr) bar.setAttribute?.('data-max', nextMaxAttr);
             controller.setDragPreview(ratio, {
               isMax: previewIsMax,
               fireBurst: shouldBurst,
               stage: panel.getAttribute?.('data-agy-codex-stage') || 'effort',
-              locked: fresh.locked
+              locked: prof.locked
             });
-            const valNode = bar.querySelector?.('.agy-effort-val');
-            if (valNode && previewItem) valNode.textContent = effortLabel(previewItem.key);
-            for (let i = 0; i < dotNodes.length; i++) dotNodes[i].setAttribute?.('data-on', i <= previewIdx ? '1' : '0');
+            if (valNode && previewItem) {
+              const txt = effortLabel(previewItem.key);
+              if (valNode.textContent !== txt) valNode.textContent = txt;
+            }
+            for (let i = 0; i < dotNodes.length; i++) {
+              const onVal = i <= previewIdx ? '1' : '0';
+              if (dotNodes[i].getAttribute?.('data-on') !== onVal) dotNodes[i].setAttribute?.('data-on', onVal);
+            }
           });
 
           const finishPointer = e => {
             if (!pointerHeld || !matchesActivePointer(e)) return;
             const pid = activePointerId;
-            pointerHeld = false;
-            activePointerId = null;
             const wasDragging = dragging;
             const startedOnTick = downTickEl;
             const offset = grabMetrics?.thumbOffset || 0;
+            const snapProfile = dragProfile;
+            pointerHeld = false;
+            activePointerId = null;
             dragging = false;
             downTickEl = null;
             grabMetrics = null;
+            dragProfile = null;
+            lastPreviewIdx = -1;
             burstFiredThisDrag = false;
             if (pid != null && track.hasPointerCapture?.(pid)) {
               try { track.releasePointerCapture?.(pid); } catch {}
@@ -2436,10 +2605,9 @@
             updateThumbScale();
             if (startedOnTick) {
               suppressNextTickClick = true;
-              if (typeof queueMicrotask === 'function') queueMicrotask(() => { suppressNextTickClick = false; });
-              else setTimeout(() => { suppressNextTickClick = false; }, 0);
+              setTimeout(() => { suppressNextTickClick = false; }, 0);
             }
-            const fresh = resolvePanelProfile(panel);
+            const fresh = snapProfile || resolvePanelProfile(panel);
             if (fresh.locked || fresh.effortList.length < 2) return;
             if (!wasDragging && startedOnTick) {
               const tickKey = startedOnTick.getAttribute?.('data-effort');
@@ -2526,6 +2694,9 @@
             openStage: stage,
             immediate: true
           });
+          if (!profile.locked && profile.effortList.length >= 2) {
+            effortControllers.get(bar)?.prewarmMaxGl?.();
+          }
         } else {
           syncTriggerEffortTint('', false, false, stage);
         }
@@ -2558,6 +2729,7 @@
       setEffortSliderReadyAttr(mountedFiberSlider || (opts.effortSlider && anyEnhancedPanel));
       if (!anyEnhancedPanel) {
         pendingModelOverride = null;
+        pendingModelOverrideAt = 0;
       }
       if (!anyEnhancedPanel && opts.effortSlider) {
         const trigger = findActiveModelTrigger();
@@ -4860,9 +5032,18 @@
 
     function scheduleSync() {
       if (disposed) return;
+      if (hasActiveEffortMotion()) {
+        deferredWorkbenchSync = true;
+        return;
+      }
+      deferredWorkbenchSync = false;
       if (syncTimer) clearTimeout(syncTimer);
       syncTimer = setTimeout(() => {
         syncTimer = null;
+        if (hasActiveEffortMotion()) {
+          deferredWorkbenchSync = true;
+          return;
+        }
         runSync();
       }, 24);
     }
